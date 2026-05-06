@@ -1,0 +1,6 @@
+schemaVersion: 1
+id: android-starter
+skills:
+  - pr-review
+  - plan-review
+  - launch-ready

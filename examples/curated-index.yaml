@@ -1,0 +1,15 @@
+schemaVersion: 1
+entries:
+  - id: android-workflow-starter
+    kind: pack
+    title: Android workflow starter
+    description: PR, plan, and launch readiness skills for Android teams
+    source: https://example.invalid/android-workflow-starter
+    maintainer: AgentWizard Maintainers <maintainers@example.invalid>
+    license: MIT
+    badge: community
+    tags:
+      - stack:android
+      - phase:review
+      - workflow:pull-request-review
+      - workflow:launch-readiness
