@@ -119,6 +119,7 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "  catalog  Curated index validation")
 	fmt.Fprintln(stdout, "  community Refresh bundled community starter assets (community fetch)")
 	fmt.Fprintln(stdout, "  icp      Set or validate target ICP")
+	fmt.Fprintln(stdout, "  version  Show CLI version/build info")
 	fmt.Fprintln(stdout, "  help     Show this help message")
 	fmt.Fprintln(stdout, "")
 	fmt.Fprintln(stdout, "Tip:")
@@ -156,11 +157,17 @@ func runInit(stdout io.Writer) error {
 	ui.OK(fmt.Sprintf("initialized %s with targetDir=%s", manifest.FileName, m.TargetDir))
 	if !isInteractiveTerminal() {
 		ui.Warn("non-interactive terminal detected; skipping picker")
-		ui.NextActions(
+		ui.Commands(
+			"Browse community skills",
 			"agent-wizard list --source-name community",
+		)
+		ui.Commands(
+			"Install common starter skills",
 			"agent-wizard add pr-review --source community",
+			"agent-wizard pack add android-starter",
 			"agent-wizard sync",
 		)
+		ui.NextActions("agent-wizard status", "agent-wizard list --installed")
 		return nil
 	}
 	selection, err := runInitPicker(stdout)
@@ -189,6 +196,16 @@ func runInit(stdout io.Writer) error {
 		fmt.Fprintf(stdout, "Installed: %s\n", strings.Join(installed, ", "))
 	}
 	fmt.Fprintf(stdout, "Target: %s\n", m.TargetDir)
+	ui.Commands(
+		"Browse community skills",
+		"agent-wizard list --source-name community",
+	)
+	ui.Commands(
+		"Install common starter skills",
+		"agent-wizard add pr-review --source community",
+		"agent-wizard pack add android-starter",
+		"agent-wizard sync",
+	)
 	ui.NextActions("agent-wizard status", "agent-wizard list --installed")
 	return nil
 }
@@ -252,6 +269,12 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 		fmt.Fprintln(stdout, "  agent-wizard list --source ./examples/library")
 		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
 		fmt.Fprintln(stdout, "  agent-wizard list --installed")
+		return true
+	case "init":
+		fmt.Fprintln(stdout, "Usage: agent-wizard init")
+		fmt.Fprintln(stdout, "Creates manifest, wires community source, and shows starter picker.")
+		fmt.Fprintln(stdout, "After init, browse skills with:")
+		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
 		return true
 	case "add":
 		fmt.Fprintln(stdout, "Usage: agent-wizard add <skill-id> [--source NAME]")

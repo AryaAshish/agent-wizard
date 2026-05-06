@@ -1,0 +1,21 @@
+{
+  "name": "agent-wizard",
+  "version": "0.0.0-dev",
+  "description": "npm wrapper for agent-wizard binary",
+  "license": "MIT",
+  "bin": {
+    "agent-wizard": "bin/agent-wizard.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "skills",
+    "automation"
+  ]
+}

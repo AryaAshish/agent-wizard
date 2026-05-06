@@ -68,3 +68,20 @@ jobs:
         with:
           name: perf-smoke
           path: .artifacts/perf-smoke.txt
+
+  distribution-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - shell: bash
+        run: bash scripts/distribution/smoke.sh

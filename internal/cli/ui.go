@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 type ui struct {
@@ -22,9 +23,11 @@ func (u ui) Header(title string) {
 		fmt.Fprintln(u.out, title)
 		return
 	}
-	fmt.Fprintln(u.out, "========================================")
-	fmt.Fprintf(u.out, " agent-wizard | %s\n", title)
-	fmt.Fprintln(u.out, "========================================")
+	fmt.Fprintln(u.out, "╔══════════════════════════════════════════════╗")
+	fmt.Fprintln(u.out, "║                agent-wizard                 ║")
+	fmt.Fprintln(u.out, "╠══════════════════════════════════════════════╣")
+	fmt.Fprintf(u.out, "║ %-44s ║\n", strings.ToUpper(title))
+	fmt.Fprintln(u.out, "╚══════════════════════════════════════════════╝")
 }
 
 func (u ui) Section(title string) {
@@ -58,5 +61,18 @@ func (u ui) NextActions(actions ...string) {
 	u.Section("Next actions")
 	for _, a := range actions {
 		fmt.Fprintf(u.out, "  - %s\n", a)
+	}
+}
+
+func (u ui) Commands(title string, commands ...string) {
+	if len(commands) == 0 {
+		return
+	}
+	u.Section(title)
+	if u.tty {
+		fmt.Fprintln(u.out, "  copy/paste:")
+	}
+	for _, c := range commands {
+		fmt.Fprintf(u.out, "  %s\n", c)
 	}
 }

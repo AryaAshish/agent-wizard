@@ -84,6 +84,9 @@ func TestRunInitAddRemove(t *testing.T) {
 	if !strings.Contains(string(b), "community") {
 		t.Fatalf("manifest missing community source: %q", string(b))
 	}
+	if !strings.Contains(out.String(), "agent-wizard list --source-name community") {
+		t.Fatalf("init output missing browse guidance: %q", out.String())
+	}
 }
 
 func TestRunSourcesAddGitURLFlag(t *testing.T) {

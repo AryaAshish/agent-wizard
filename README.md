@@ -21,20 +21,47 @@ agent-wizard add pr-review --source community
 agent-wizard sync
 ```
 
+After `init`, the CLI also prints suggested commands:
+
+```bash
+agent-wizard list --source-name community
+agent-wizard add pr-review --source community
+agent-wizard pack add android-starter
+agent-wizard sync
+```
+
 ---
 
 ## Step 1 — Install
 
-**macOS / Linux:**
+### Homebrew (recommended on macOS/Linux)
+
+```bash
+brew tap aryaashish/tap
+brew install agent-wizard
+```
+
+### npm / npx
+
+```bash
+# one-off usage
+npx agent-wizard --version
+
+# or global install
+npm i -g agent-wizard
+agent-wizard --version
+```
+
+### curl installer
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
 ```
 
-**Or build from source** (requires Go 1.22+):
+### Build from source (advanced, requires Go 1.22+)
 
 ```bash
-go install github.com/aryaashish/agent-wizard@latest
+go install github.com/aryaashish/agent-wizard@main
 ```
 
 **Windows** (from source):
@@ -45,11 +72,13 @@ cd agent-wizard
 go build -o agent-wizard.exe .
 ```
 
-Make sure the binary is on your `PATH`, then verify:
+Verify installation:
 
 ```bash
-agent-wizard help
+agent-wizard --version
 ```
+
+If `agent-wizard --version` shows an older version, your shell might be using a stale binary path. Run `which agent-wizard` and ensure it points to your intended install location.
 
 ---
 
@@ -280,6 +309,7 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 - [CLI contract](docs/cli-contract.md)
 - [Threat model](docs/security/threat-model.md)
 - [Release checklist](docs/release/release-checklist.md)
+- [Release notes template](docs/release/release-notes-template.md)
 
 ## Contributing
 

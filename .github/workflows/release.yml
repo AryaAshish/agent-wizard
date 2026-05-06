@@ -1,0 +1,127 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. v1.2.3). Optional for manual."
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Build release assets
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+          COMMIT: ${{ github.sha }}
+          DATE: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+        run: bash scripts/release/build_assets.sh dist
+
+      - name: Create or update GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+        run: |
+          if [ -z "$TAG_NAME" ]; then
+            TAG_NAME="v0.0.0-dev-${GITHUB_RUN_NUMBER}"
+          fi
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
+          gh release upload "$TAG_NAME" dist/* --clobber
+
+  update-homebrew-tap:
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update tap formula
+        env:
+          TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if [ -z "${TAP_REPO}" ] || [ -z "${TAP_TOKEN}" ]; then
+            echo "Homebrew tap secrets missing; skipping tap update."
+            exit 0
+          fi
+          bash scripts/release/update_homebrew_tap.sh
+
+  publish-npm:
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish npm wrapper
+        working-directory: npm/agent-wizard
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN missing; skipping npm publish."
+            exit 0
+          fi
+          npm version "${VERSION#v}" --no-git-tag-version
+          npm publish --access public
+
+  post-release-smoke:
+    runs-on: ${{ matrix.os }}
+    needs: build-and-release
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install via script and verify version
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/${{ github.ref_name }}/install.sh | sh
+          agent-wizard --version
+
+      - name: Install via npm wrapper and verify version
+        env:
+          AGENT_WIZARD_VERSION: ${{ github.ref_name }}
+        run: |
+          npm --prefix npm/agent-wizard install
+          node npm/agent-wizard/bin/agent-wizard.js --version
+
+      - name: Homebrew install smoke (macOS only)
+        if: runner.os == 'macOS' && env.TAP_REPO != ''
+        env:
+          TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO }}
+        run: |
+          brew tap "${TAP_REPO}"
+          brew install agent-wizard
+          agent-wizard --version
