@@ -53,6 +53,12 @@ func TestRunInitAddRemove(t *testing.T) {
 	project := t.TempDir()
 	orig, _ := os.Getwd()
 	defer func() { _ = os.Chdir(orig) }()
+	home := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error = %v", err)
+	}
 	if err := os.Chdir(project); err != nil {
 		t.Fatalf("Chdir() error = %v", err)
 	}
@@ -69,6 +75,14 @@ func TestRunInitAddRemove(t *testing.T) {
 	}
 	if err := run([]string{"remove", "pr-review"}, &out); err != nil {
 		t.Fatalf("run(remove) error = %v", err)
+	}
+	mPath := filepath.Join(project, "agentskills.yaml")
+	b, err := os.ReadFile(mPath)
+	if err != nil {
+		t.Fatalf("ReadFile(manifest) error = %v", err)
+	}
+	if !strings.Contains(string(b), "community") {
+		t.Fatalf("manifest missing community source: %q", string(b))
 	}
 }
 
@@ -105,5 +119,51 @@ func TestRunSourcesAddGitURLFlag(t *testing.T) {
 	}
 	if src.GitURL != "https://github.com/AryaAshish/agent-skills-community.git" {
 		t.Fatalf("git URL = %q, want %q", src.GitURL, "https://github.com/AryaAshish/agent-skills-community.git")
+	}
+}
+
+func TestRunCommunityFetch(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"community", "fetch"}, &out); err != nil {
+		t.Fatalf("run(community fetch) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "community starter assets refreshed") {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+}
+
+func TestRunSourcesAddLocalWarnsByDefault(t *testing.T) {
+	home := t.TempDir()
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error = %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	var out bytes.Buffer
+	dir := t.TempDir()
+	if err := run([]string{"sources", "add", "--name", "localdev", "--kind", "local", "--path", dir}, &out); err != nil {
+		t.Fatalf("run(sources add local) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "not team-shareable") {
+		t.Fatalf("expected shareability warning, got %q", out.String())
+	}
+}
+
+func TestRunSourcesAddLocalQuietSuppressesWarning(t *testing.T) {
+	home := t.TempDir()
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error = %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	var out bytes.Buffer
+	dir := t.TempDir()
+	if err := run([]string{"sources", "add", "--name", "localdev", "--kind", "local", "--path", dir, "--quiet"}, &out); err != nil {
+		t.Fatalf("run(sources add local --quiet) error = %v", err)
+	}
+	if strings.Contains(out.String(), "not team-shareable") {
+		t.Fatalf("warning should be suppressed, got %q", out.String())
 	}
 }

@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/aryaashish/agent-wizard/internal/community"
 	"github.com/aryaashish/agent-wizard/internal/config"
 	"github.com/aryaashish/agent-wizard/internal/engine"
 	"github.com/aryaashish/agent-wizard/internal/manifest"
@@ -82,6 +84,11 @@ func run(args []string, stdout io.Writer) error {
 			return fmt.Errorf("unknown catalog command (try: catalog validate <file>)")
 		}
 		return runCatalogValidate(args[2:], stdout)
+	case "community":
+		if len(args) < 2 || args[1] != "fetch" {
+			return fmt.Errorf("unknown community command (try: community fetch)")
+		}
+		return runCommunityFetch(stdout)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -94,7 +101,7 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "  agent-wizard <command> [flags]")
 	fmt.Fprintln(stdout, "")
 	fmt.Fprintln(stdout, "Commands:")
-	fmt.Fprintln(stdout, "  init     Initialize agentskills.yaml in current project")
+	fmt.Fprintln(stdout, "  init     Initialize project and launch community starter picker")
 	fmt.Fprintln(stdout, "  list     List available skills from a source")
 	fmt.Fprintln(stdout, "  add      Add skill to manifest (supports source qualifier)")
 	fmt.Fprintln(stdout, "  remove   Remove skill from project manifest")
@@ -110,6 +117,7 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "  import   Copy discovered skills tree into library")
 	fmt.Fprintln(stdout, "  pack     Pack helpers (pack add)")
 	fmt.Fprintln(stdout, "  catalog  Curated index validation")
+	fmt.Fprintln(stdout, "  community Refresh bundled community starter assets (community fetch)")
 	fmt.Fprintln(stdout, "  icp      Set or validate target ICP")
 	fmt.Fprintln(stdout, "  help     Show this help message")
 	fmt.Fprintln(stdout, "")
@@ -119,15 +127,69 @@ func printHelp(stdout io.Writer) {
 }
 
 func runInit(stdout io.Writer) error {
+	ui := newUI(stdout)
+	ui.Header("project init")
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Init(wd)
+	var m manifest.Manifest
+	m, err = manifest.Init(wd)
+	if err != nil {
+		if strings.Contains(err.Error(), "manifest already exists") {
+			m, err = manifest.Load(wd)
+			if err != nil {
+				return err
+			}
+			ui.Warn("manifest already exists, reusing current config")
+		} else {
+			return err
+		}
+	}
+	if err := ensureCommunitySourceConfigured(); err != nil {
+		return err
+	}
+	m.Sources = engine.AddUnique(m.Sources, community.SourceName)
+	if err := manifest.Save(wd, m); err != nil {
+		return err
+	}
+	ui.OK(fmt.Sprintf("initialized %s with targetDir=%s", manifest.FileName, m.TargetDir))
+	if !isInteractiveTerminal() {
+		ui.Warn("non-interactive terminal detected; skipping picker")
+		ui.NextActions(
+			"agent-wizard list --source-name community",
+			"agent-wizard add pr-review --source community",
+			"agent-wizard sync",
+		)
+		return nil
+	}
+	selection, err := runInitPicker(stdout)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "initialized %s with targetDir=%s\n", manifest.FileName, m.TargetDir)
+	installed := make([]string, 0, 4)
+	for _, p := range selection.packs {
+		m.Packs = engine.AddUnique(m.Packs, p)
+		installed = append(installed, "pack:"+p)
+	}
+	for _, s := range selection.skills {
+		m.Skills = engine.AddUnique(m.Skills, community.SourceName+"/"+s)
+		installed = append(installed, "skill:"+community.SourceName+"/"+s)
+	}
+	if err := manifest.Save(wd, m); err != nil {
+		return err
+	}
+	if err := runSync([]string{}, stdout); err != nil {
+		return err
+	}
+	ui.Section("Summary")
+	if len(installed) == 0 {
+		fmt.Fprintln(stdout, "No skills selected; source configured only.")
+	} else {
+		fmt.Fprintf(stdout, "Installed: %s\n", strings.Join(installed, ", "))
+	}
+	fmt.Fprintf(stdout, "Target: %s\n", m.TargetDir)
+	ui.NextActions("agent-wizard status", "agent-wizard list --installed")
 	return nil
 }
 
@@ -202,9 +264,10 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 	case "sources":
 		fmt.Fprintln(stdout, "Usage:")
 		fmt.Fprintln(stdout, "  agent-wizard sources list")
-		fmt.Fprintln(stdout, "  agent-wizard sources add --name NAME --kind local|git|archive --path PATH")
+		fmt.Fprintln(stdout, "  agent-wizard sources add --name NAME --kind local|git|archive [--path PATH]")
 		fmt.Fprintln(stdout, "    git extras: --git-url URL [--git-ref REF] [--subdir DIR]")
 		fmt.Fprintln(stdout, "    archive extras: --archive-url URL")
+		fmt.Fprintln(stdout, "    optional: --quiet")
 		fmt.Fprintln(stdout, "  agent-wizard sources remove NAME")
 		return true
 	case "pack", "pack add":
@@ -217,6 +280,9 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 		return true
 	case "status":
 		fmt.Fprintln(stdout, "Usage: agent-wizard status [--json] [--check-drifts] [--strict-digest]")
+		return true
+	case "community":
+		fmt.Fprintln(stdout, "Usage: agent-wizard community fetch")
 		return true
 	default:
 		return false
@@ -273,7 +339,13 @@ func runSync(args []string, stdout io.Writer) error {
 		return err
 	}
 	opts := engine.SyncOpts{DryRun: dryRun, Prune: prune, StrictLock: strictLock}
-	return engine.Sync(wd, m, cfg, stdout, opts)
+	if err := engine.Sync(wd, m, cfg, stdout, opts); err != nil {
+		return err
+	}
+	if !dryRun {
+		newUI(stdout).NextActions("agent-wizard status", "agent-wizard list --installed")
+	}
+	return nil
 }
 
 func runSources(args []string, stdout io.Writer) error {
@@ -299,6 +371,7 @@ func runSources(args []string, stdout io.Writer) error {
 		fs.SetOutput(io.Discard)
 		var name, kind, path string
 		var gitURL, gitRef, subdir, archiveURL string
+		var quiet bool
 		fs.StringVar(&name, "name", "", "source name")
 		fs.StringVar(&kind, "kind", "local", "source kind")
 		fs.StringVar(&path, "path", "", "source path")
@@ -309,6 +382,7 @@ func runSources(args []string, stdout io.Writer) error {
 		fs.StringVar(&subdir, "subdir", "", "subdirectory inside git repository")
 		fs.StringVar(&archiveURL, "archive-url", "", "zip archive URL")
 		fs.StringVar(&archiveURL, "archiveUrl", "", "zip archive URL (camelCase alias)")
+		fs.BoolVar(&quiet, "quiet", false, "suppress advisory output")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -346,6 +420,9 @@ func runSources(args []string, stdout io.Writer) error {
 		if err := config.Save(cfgPath, cfg); err != nil {
 			return err
 		}
+		if kind == "local" && !quiet {
+			fmt.Fprintln(stdout, "warning: local paths are machine-specific and not team-shareable; use git/archive sources for team collaboration")
+		}
 		fmt.Fprintf(stdout, "added source %s\n", name)
 		return nil
 	case "remove":
@@ -368,6 +445,92 @@ func runSources(args []string, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("unknown sources subcommand %q", args[0])
 	}
+}
+
+type initSelection struct {
+	packs  []string
+	skills []string
+}
+
+func runInitPicker(stdout io.Writer) (initSelection, error) {
+	fmt.Fprintln(stdout, "")
+	fmt.Fprintln(stdout, "Select starter setup:")
+	fmt.Fprintln(stdout, "  [1] Install Android starter pack (recommended)")
+	fmt.Fprintln(stdout, "  [2] Pick individual skills")
+	fmt.Fprintln(stdout, "  [3] Skip for now")
+	fmt.Fprint(stdout, "Enter choice (1-3): ")
+	sc := bufio.NewScanner(os.Stdin)
+	if !sc.Scan() {
+		return initSelection{}, sc.Err()
+	}
+	switch strings.TrimSpace(sc.Text()) {
+	case "1":
+		return initSelection{packs: []string{"android-starter"}}, nil
+	case "2":
+		fmt.Fprintln(stdout, "Pick a skill:")
+		fmt.Fprintln(stdout, "  [1] pr-review")
+		fmt.Fprintln(stdout, "  [2] plan-review")
+		fmt.Fprintln(stdout, "  [3] launch-ready")
+		fmt.Fprint(stdout, "Enter choice (1-3): ")
+		if !sc.Scan() {
+			return initSelection{}, sc.Err()
+		}
+		switch strings.TrimSpace(sc.Text()) {
+		case "1":
+			return initSelection{skills: []string{"pr-review"}}, nil
+		case "2":
+			return initSelection{skills: []string{"plan-review"}}, nil
+		case "3":
+			return initSelection{skills: []string{"launch-ready"}}, nil
+		default:
+			return initSelection{}, fmt.Errorf("invalid skill selection")
+		}
+	case "3":
+		return initSelection{}, nil
+	default:
+		return initSelection{}, fmt.Errorf("invalid starter selection")
+	}
+}
+
+func ensureCommunitySourceConfigured() error {
+	cfgPath, err := config.DefaultPath()
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.GetSource(community.SourceName); ok {
+		return nil
+	}
+	cfg.Sources = append(cfg.Sources, config.Source{Name: community.SourceName, Kind: community.SourceKind})
+	return config.Save(cfgPath, cfg)
+}
+
+func runCommunityFetch(stdout io.Writer) error {
+	ui := newUI(stdout)
+	ui.Header("community fetch")
+	root, err := community.Extract(true)
+	if err != nil {
+		return err
+	}
+	ui.OK("community starter assets refreshed")
+	fmt.Fprintf(stdout, "path: %s\n", root)
+	ui.NextActions("agent-wizard list --source-name community")
+	return nil
+}
+
+func isInteractiveTerminal() bool {
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	stdoutInfo, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (stdinInfo.Mode()&os.ModeCharDevice) != 0 && (stdoutInfo.Mode()&os.ModeCharDevice) != 0
 }
 
 func runICP(args []string, stdout io.Writer) error {

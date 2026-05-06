@@ -31,7 +31,7 @@ func TestEndUserFlow_LocalSource_Pack_Lock_Sync_StatusJSON(t *testing.T) {
 
 	// Wire source into manifest (sources command is user-level config by design).
 	m := readFile(t, filepath.Join(project, "agentskills.yaml"))
-	m = strings.Replace(m, "sources: []", "sources:\n    - local-lib", 1)
+	m = replaceSourcesList(m, "sources:\n    - local-lib")
 	writeFile(t, filepath.Join(project, "agentskills.yaml"), m)
 
 	mustRun(t, []string{"pack", "add", "android-starter"}, &out)
@@ -79,7 +79,7 @@ func TestNegative_AmbiguousBareSkillNeedsNamespace(t *testing.T) {
 	mustRun(t, []string{"sources", "add", "--name", "b", "--kind", "local", "--path", libB}, &out)
 	out.Reset()
 	m := readFile(t, filepath.Join(project, "agentskills.yaml"))
-	m = strings.Replace(m, "sources: []", "sources:\n    - a\n    - b", 1)
+	m = replaceSourcesList(m, "sources:\n    - a\n    - b")
 	writeFile(t, filepath.Join(project, "agentskills.yaml"), m)
 	mustRun(t, []string{"add", "pr-review"}, &out)
 	out.Reset()
@@ -103,7 +103,7 @@ func TestNegative_StrictLockDigestMismatchAndDriftExitCode(t *testing.T) {
 	mustRun(t, []string{"init"}, &out)
 	mustRun(t, []string{"sources", "add", "--name", "local-lib", "--kind", "local", "--path", lib}, &out)
 	m := readFile(t, filepath.Join(project, "agentskills.yaml"))
-	m = strings.Replace(m, "sources: []", "sources:\n    - local-lib", 1)
+	m = replaceSourcesList(m, "sources:\n    - local-lib")
 	writeFile(t, filepath.Join(project, "agentskills.yaml"), m)
 	mustRun(t, []string{"add", "pr-review"}, &out)
 	mustRun(t, []string{"lock"}, &out)
@@ -210,4 +210,12 @@ func writeFile(t *testing.T, path, content string) {
 func init() {
 	// compile-time check that config still supports source kinds.
 	_ = config.Source{}
+}
+
+func replaceSourcesList(in, replacement string) string {
+	out := strings.Replace(in, "sources:\n    - community", replacement, 1)
+	if out != in {
+		return out
+	}
+	return strings.Replace(in, "sources: []", replacement, 1)
 }

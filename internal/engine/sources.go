@@ -7,6 +7,7 @@ import (
 
 	"github.com/aryaashish/agent-wizard/internal/archive"
 	"github.com/aryaashish/agent-wizard/internal/cache"
+	"github.com/aryaashish/agent-wizard/internal/community"
 	"github.com/aryaashish/agent-wizard/internal/config"
 	"github.com/aryaashish/agent-wizard/internal/skills"
 	"github.com/aryaashish/agent-wizard/internal/vcs"
@@ -61,6 +62,12 @@ func materializeSource(cfg config.Source) (materializedSource, error) {
 			return materializedSource{}, err
 		}
 		return materializedSource{Name: name, Root: dest, ResolvedRef: "archive:" + cfg.ArchiveURL}, nil
+	case community.SourceKind:
+		root, err := community.Extract(false)
+		if err != nil {
+			return materializedSource{}, err
+		}
+		return materializedSource{Name: name, Root: root, ResolvedRef: "embedded"}, nil
 	default:
 		return materializedSource{}, fmt.Errorf("unsupported source kind %q for %q", cfg.Kind, name)
 	}

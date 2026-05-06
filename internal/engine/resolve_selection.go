@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/aryaashish/agent-wizard/internal/community"
 	"github.com/aryaashish/agent-wizard/internal/config"
 	"github.com/aryaashish/agent-wizard/internal/manifest"
 	"github.com/aryaashish/agent-wizard/internal/model"
@@ -15,7 +16,7 @@ import (
 func BuildBuckets(cfg config.Config, manifestSources []string) (map[string][]skills.Skill, error) {
 	buckets := map[string][]skills.Skill{}
 	for _, name := range manifestSources {
-		srcCfg, ok := cfg.GetSource(name)
+		srcCfg, ok := resolveSource(cfg, name)
 		if !ok {
 			return nil, fmt.Errorf("source %q not found", name)
 		}
@@ -57,7 +58,7 @@ func ResolveSkill(ref model.SkillRef, buckets map[string][]skills.Skill) (skills
 // It prefers the first materialized source listed in manifest.Sources order.
 func LibraryRoot(cfg config.Config, manifestSources []string) (string, error) {
 	for _, name := range manifestSources {
-		srcCfg, ok := cfg.GetSource(name)
+		srcCfg, ok := resolveSource(cfg, name)
 		if !ok {
 			continue
 		}
@@ -68,6 +69,16 @@ func LibraryRoot(cfg config.Config, manifestSources []string) (string, error) {
 		return ms.Root, nil
 	}
 	return "", fmt.Errorf("no sources configured")
+}
+
+func resolveSource(cfg config.Config, name string) (config.Source, bool) {
+	if src, ok := cfg.GetSource(name); ok {
+		return src, true
+	}
+	if name == community.SourceName {
+		return config.Source{Name: community.SourceName, Kind: community.SourceKind}, true
+	}
+	return config.Source{}, false
 }
 
 // ExpandSkillSelections combines manifest.skill entries and skills declared by packs.

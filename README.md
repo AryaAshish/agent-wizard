@@ -10,14 +10,14 @@ Works with **Cursor, Claude Code, Codex**, and any agent that reads skill files.
 
 ```bash
 agent-wizard init
-agent-wizard sources add --name examples --kind local --path ./examples/library
-agent-wizard list --source-name examples
+agent-wizard list --source-name community
 ```
 
-Then install one skill:
+`init` now auto-wires the bundled starter community library and opens an interactive picker.
+If you skip the picker, install one skill manually:
 
 ```bash
-agent-wizard add pr-review -examples
+agent-wizard add pr-review --source community
 agent-wizard sync
 ```
 
@@ -34,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/instal
 **Or build from source** (requires Go 1.22+):
 
 ```bash
-go install github.com/AryaAshish/agent-wizard@latest
+go install github.com/aryaashish/agent-wizard@latest
 ```
 
 **Windows** (from source):
@@ -61,18 +61,15 @@ Open your project in Cursor (or any editor) and run:
 agent-wizard init
 ```
 
-This creates an `agentskills.yaml` file in your project root. That file tracks which skills your project uses.
+This creates an `agentskills.yaml` file, auto-attaches the bundled `community` source, and starts an interactive starter picker.
 
 ---
 
 ## Step 3 — Explore and install community skills
 
-Browse available skills from any library source:
+Browse available skills from bundled community source:
 
 ```bash
-# Point at a library folder (local clone or local path)
-agent-wizard sources add --name community --kind local --path /path/to/community-library
-
 # See what's available
 agent-wizard list --source-name community
 
@@ -117,8 +114,9 @@ Push this to a **private** Git repo that your team has access to.
 Every team member runs these two commands once:
 
 ```bash
-# Register your team's private skill library
-agent-wizard sources add --name my-team --kind local --path /path/to/my-team-skills
+# Register your team's private skill library (shareable)
+agent-wizard sources add --name my-team --kind git \
+  --git-url https://github.com/your-org/my-team-skills.git
 
 # See all team skills
 agent-wizard list --source-name my-team
@@ -133,7 +131,7 @@ agent-wizard add deploy-checklist --source my-team
 agent-wizard sync
 ```
 
-Your skills stay in your private repo. No one outside your org can see them. But every teammate with repo access can install them in one command.
+Your skills stay in your private repo. No one outside your org can see them. Every teammate with repo access can install them in one command.
 
 ### Packs — bundle multiple skills together
 
@@ -232,10 +230,12 @@ You can point `agent-wizard` at three kinds of skill sources:
 | Type | Command | Best for |
 |------|---------|----------|
 | **Local folder** | `sources add --name dev --kind local --path ~/my-skills` | Developing skills locally |
-| **Git repo** | Configure in `.agent-wizard-config.yaml` (`kind: git`, `gitUrl`, optional `gitRef`) | Team/community repos |
-| **Zip archive** | Configure in `.agent-wizard-config.yaml` (`kind: archive`, `archiveUrl`) | Pinned release snapshots |
+| **Git repo** | `sources add --name team --kind git --git-url https://... [--git-ref main]` | Team/community repos |
+| **Zip archive** | `sources add --name release --kind archive --archive-url https://...` | Pinned release snapshots |
 
-Note: CLI `sources add` currently supports local path registration directly. Git/archive sources are supported by the engine and can be added through config file entries.
+Optional for local sources: add `--quiet` to suppress the collaboration warning in scripts.
+
+`local` paths are machine-specific. They are great for your own development machine, but not team-shareable unless everyone mounts the same shared filesystem.
 
 ---
 
@@ -262,6 +262,7 @@ Note: CLI `sources add` currently supports local path registration directly. Git
 | `sources list` | Show configured sources |
 | `sources add` | Register a new source |
 | `sources remove` | Remove a source |
+| `community fetch` | Refresh bundled community assets cache |
 | `migrate` | Upgrade manifest schema |
 | `cache status` | Show cache info |
 | `cache prune` | Clear cached downloads |

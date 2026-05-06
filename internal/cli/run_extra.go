@@ -14,6 +14,7 @@ import (
 	"github.com/aryaashish/agent-wizard/internal/cache"
 	catalog "github.com/aryaashish/agent-wizard/internal/catalog"
 	check "github.com/aryaashish/agent-wizard/internal/ci"
+	"github.com/aryaashish/agent-wizard/internal/community"
 	"github.com/aryaashish/agent-wizard/internal/config"
 	"github.com/aryaashish/agent-wizard/internal/drift"
 	"github.com/aryaashish/agent-wizard/internal/engine"
@@ -84,6 +85,10 @@ func runListExpanded(args []string, stdout io.Writer) error {
 			return err
 		}
 		srcCfg, ok := cfg.GetSource(sourceName)
+		if !ok && sourceName == community.SourceName {
+			srcCfg = config.Source{Name: community.SourceName, Kind: community.SourceKind}
+			ok = true
+		}
 		if !ok {
 			return fmt.Errorf("source %q not found", sourceName)
 		}
