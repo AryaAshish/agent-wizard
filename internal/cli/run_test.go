@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aryaashish/agent-wizard/internal/config"
 )
 
 func TestRunHelp(t *testing.T) {
@@ -67,5 +69,41 @@ func TestRunInitAddRemove(t *testing.T) {
 	}
 	if err := run([]string{"remove", "pr-review"}, &out); err != nil {
 		t.Fatalf("run(remove) error = %v", err)
+	}
+}
+
+func TestRunSourcesAddGitURLFlag(t *testing.T) {
+	home := t.TempDir()
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error = %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	var out bytes.Buffer
+	err := run([]string{
+		"sources", "add",
+		"--name", "community",
+		"--kind", "git",
+		"--git-url", "https://github.com/AryaAshish/agent-skills-community.git",
+	}, &out)
+	if err != nil {
+		t.Fatalf("run(sources add git) error = %v", err)
+	}
+
+	cfgPath, err := config.DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath() error = %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load(config) error = %v", err)
+	}
+	src, ok := cfg.GetSource("community")
+	if !ok {
+		t.Fatalf("expected source community to exist")
+	}
+	if src.GitURL != "https://github.com/AryaAshish/agent-skills-community.git" {
+		t.Fatalf("git URL = %q, want %q", src.GitURL, "https://github.com/AryaAshish/agent-skills-community.git")
 	}
 }

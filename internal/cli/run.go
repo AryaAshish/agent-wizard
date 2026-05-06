@@ -203,6 +203,8 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 		fmt.Fprintln(stdout, "Usage:")
 		fmt.Fprintln(stdout, "  agent-wizard sources list")
 		fmt.Fprintln(stdout, "  agent-wizard sources add --name NAME --kind local|git|archive --path PATH")
+		fmt.Fprintln(stdout, "    git extras: --git-url URL [--git-ref REF] [--subdir DIR]")
+		fmt.Fprintln(stdout, "    archive extras: --archive-url URL")
 		fmt.Fprintln(stdout, "  agent-wizard sources remove NAME")
 		return true
 	case "pack", "pack add":
@@ -296,19 +298,51 @@ func runSources(args []string, stdout io.Writer) error {
 		fs := flag.NewFlagSet("sources add", flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
 		var name, kind, path string
+		var gitURL, gitRef, subdir, archiveURL string
 		fs.StringVar(&name, "name", "", "source name")
 		fs.StringVar(&kind, "kind", "local", "source kind")
 		fs.StringVar(&path, "path", "", "source path")
+		fs.StringVar(&gitURL, "git-url", "", "git source URL")
+		fs.StringVar(&gitURL, "gitUrl", "", "git source URL (camelCase alias)")
+		fs.StringVar(&gitRef, "git-ref", "", "git ref/tag/branch")
+		fs.StringVar(&gitRef, "gitRef", "", "git ref/tag/branch (camelCase alias)")
+		fs.StringVar(&subdir, "subdir", "", "subdirectory inside git repository")
+		fs.StringVar(&archiveURL, "archive-url", "", "zip archive URL")
+		fs.StringVar(&archiveURL, "archiveUrl", "", "zip archive URL (camelCase alias)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if name == "" || path == "" {
-			return fmt.Errorf("sources add requires --name and --path")
+		if name == "" {
+			return fmt.Errorf("sources add requires --name")
+		}
+		switch kind {
+		case "local":
+			if path == "" {
+				return fmt.Errorf("sources add local requires --path")
+			}
+		case "git":
+			if gitURL == "" {
+				return fmt.Errorf("sources add git requires --git-url")
+			}
+		case "archive":
+			if archiveURL == "" {
+				return fmt.Errorf("sources add archive requires --archive-url")
+			}
+		default:
+			return fmt.Errorf("sources add unsupported --kind %q", kind)
 		}
 		if _, ok := cfg.GetSource(name); ok {
 			return fmt.Errorf("source %q already exists", name)
 		}
-		cfg.Sources = append(cfg.Sources, config.Source{Name: name, Kind: kind, Path: path})
+		cfg.Sources = append(cfg.Sources, config.Source{
+			Name:       name,
+			Kind:       kind,
+			Path:       path,
+			GitURL:     gitURL,
+			GitRef:     gitRef,
+			Subdir:     subdir,
+			ArchiveURL: archiveURL,
+		})
 		if err := config.Save(cfgPath, cfg); err != nil {
 			return err
 		}
