@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aryaashish/agent-wizard/internal/community"
 	"github.com/aryaashish/agent-wizard/internal/config"
 )
 
@@ -122,6 +123,51 @@ func TestRunSourcesAddGitURLFlag(t *testing.T) {
 	}
 	if src.GitURL != "https://github.com/AryaAshish/agent-skills-community.git" {
 		t.Fatalf("git URL = %q, want %q", src.GitURL, "https://github.com/AryaAshish/agent-skills-community.git")
+	}
+}
+
+func TestInitMigratesLegacyCommunityGitInGlobalConfig(t *testing.T) {
+	home := t.TempDir()
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error = %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	cfgPath := filepath.Join(home, config.FileName)
+	legacyYAML := "schemaVersion: 1\nsources:\n  - name: community\n    kind: git\n    gitUrl: https://github.com/AryaAshish/agent-skills-community.git\n"
+	if err := os.WriteFile(cfgPath, []byte(legacyYAML), 0o644); err != nil {
+		t.Fatalf("WriteFile config: %v", err)
+	}
+
+	proj := t.TempDir()
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(proj); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir(origWd) }()
+
+	var out bytes.Buffer
+	if err := run([]string{"init"}, &out); err != nil {
+		t.Fatalf("run(init) error = %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load(config): %v", err)
+	}
+	src, ok := cfg.GetSource(community.SourceName)
+	if !ok {
+		t.Fatal("expected community source after init")
+	}
+	if src.Kind != community.SourceKind {
+		t.Fatalf("migrated kind = %q, want %q", src.Kind, community.SourceKind)
+	}
+	if src.GitURL != "" {
+		t.Fatalf("expected empty gitUrl after migrate, got %q", src.GitURL)
 	}
 }
 

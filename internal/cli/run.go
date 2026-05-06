@@ -524,7 +524,14 @@ func ensureCommunitySourceConfigured() error {
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.GetSource(community.SourceName); ok {
+	for i := range cfg.Sources {
+		if cfg.Sources[i].Name != community.SourceName {
+			continue
+		}
+		if engine.IsLegacyCommunityGitSource(cfg.Sources[i]) {
+			cfg.Sources[i] = config.Source{Name: community.SourceName, Kind: community.SourceKind}
+			return config.Save(cfgPath, cfg)
+		}
 		return nil
 	}
 	cfg.Sources = append(cfg.Sources, config.Source{Name: community.SourceName, Kind: community.SourceKind})
@@ -533,6 +540,9 @@ func ensureCommunitySourceConfigured() error {
 
 func runCommunityFetch(stdout io.Writer) error {
 	ui := newUI(stdout)
+	if err := ensureCommunitySourceConfigured(); err != nil {
+		return err
+	}
 	ui.Header("community fetch")
 	root, err := community.Extract(true)
 	if err != nil {
