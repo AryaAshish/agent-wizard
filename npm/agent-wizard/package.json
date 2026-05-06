@@ -1,6 +1,9 @@
 {
-  "name": "agent-wizard",
+  "name": "@aryaashish/agent-wizard",
   "version": "0.0.0-dev",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "npm wrapper for agent-wizard binary",
   "license": "MIT",
   "bin": {

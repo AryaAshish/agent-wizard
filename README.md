@@ -34,35 +34,47 @@ agent-wizard sync
 
 ## Step 1 — Install
 
-### Homebrew (recommended on macOS/Linux)
+### curl installer (works everywhere we ship binaries)
 
-```bash
-brew tap aryaashish/tap
-brew install agent-wizard
-```
-
-### npm / npx
-
-```bash
-# one-off usage
-npx agent-wizard --version
-
-# or global install
-npm i -g agent-wizard
-agent-wizard --version
-```
-
-### curl installer
+Writes the binary into `$HOME/go/bin` by default (override with `INSTALL_DIR`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
 ```
 
+### npm / npx
+
+The published package is **`@aryaashish/agent-wizard`**. It downloads the matching release from GitHub Releases, verifies checksums, caches under `~/.cache/agent-wizard/npm`, and runs the real binary.
+
+```bash
+# one-off usage
+npx @aryaashish/agent-wizard --version
+
+# or global install
+npm i -g @aryaashish/agent-wizard
+agent-wizard --version
+```
+
+Until a release has been published to npm, install from the repo path or use the curl installer above.
+
+### Homebrew (optional)
+
+Homebrew support is **maintainer-provided**: CI can push a formula to a separate tap repository when `HOMEBREW_TAP_REPO` and `HOMEBREW_TAP_TOKEN` are configured. `brew tap …` must point at whatever **public** GitHub repo actually holds the formula (for example `your-user/homebrew-agent-wizard`), not a placeholder name:
+
+```bash
+brew tap <github-user>/<tap-repo>
+brew install agent-wizard
+```
+
+If you do not have a tap configured yet, use **curl** or **npm** instead.
+
 ### Build from source (advanced, requires Go 1.22+)
 
 ```bash
-go install github.com/aryaashish/agent-wizard@main
+go install github.com/aryaashish/agent-wizard@latest
 ```
+
+Ensure `$HOME/go/bin` (or your `GOBIN`) is on `PATH`. Pin to a tagged release if you prefer reproducible installs (for example `@v0.1.0` once that tag exists).
 
 **Windows** (from source):
 
@@ -78,7 +90,7 @@ Verify installation:
 agent-wizard --version
 ```
 
-If `agent-wizard --version` shows an older version, your shell might be using a stale binary path. Run `which agent-wizard` and ensure it points to your intended install location.
+If `agent-wizard --version` shows an older version, your shell might be using a stale binary path. Run `which agent-wizard`, open a new terminal, or run `hash -r` (bash/zsh) so `PATH` picks up `$HOME/go/bin`.
 
 ---
 
@@ -104,7 +116,7 @@ agent-wizard list --source-name community
 
 # Add individual skills from that source
 agent-wizard add pr-review --source community
-agent-wizard add plan-review -community
+agent-wizard add plan-review --source community
 
 # Or add a whole pack (a bundle of related skills)
 agent-wizard pack add android-starter

@@ -14,7 +14,25 @@ resolve_version() {
     echo "VERSION must be set when BASE_URL is provided." >&2
     exit 1
   fi
-  tag="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: agent-wizard-install' "https://api.github.com/repos/${REPO}/releases/latest" | awk -F '\"' '/\"tag_name\"/ {print $4; exit}')"
+  latest_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")"
+  tag="${latest_url##*/}"
+  # Reject bogus segments (e.g. HTML or API URLs) from odd redirect chains.
+  case "$tag" in
+    ''|*/*|*:*|*%*) tag="" ;;
+  esac
+  if [ -z "$tag" ]; then
+    tag="$(
+      curl -fsSL \
+        -H 'Accept: application/vnd.github+json' \
+        "https://api.github.com/repos/${REPO}/releases/latest" |
+        sed -n '/"tag_name"[[:space:]]*:[[:space:]]*"/{
+          s/.*"tag_name"[[:space:]]*:[[:space:]]*"//
+          s/".*//
+          p
+          q
+        }'
+    )"
+  fi
   if [ -z "$tag" ]; then
     echo "Could not resolve latest release tag." >&2
     exit 1
@@ -56,7 +74,7 @@ trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "${base_url}/${asset}" -o "${tmp}/${asset}"
 curl -fsSL "${base_url}/checksums.txt" -o "${tmp}/checksums.txt"
 
-expected="$(awk '/'"${asset//./\\.}"'$/ {print $1; exit}' "${tmp}/checksums.txt")"
+expected="$(awk -v f="$asset" '$2==f {print $1; exit}' "${tmp}/checksums.txt")"
 if [ -z "$expected" ]; then
   echo "Checksum not found for ${asset}" >&2
   exit 1

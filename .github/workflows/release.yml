@@ -108,6 +108,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/${{ github.ref_name }}/install.sh | sh
+          export PATH="$HOME/go/bin:$PATH"
           agent-wizard --version
 
       - name: Install via npm wrapper and verify version
@@ -118,10 +119,14 @@ jobs:
           node npm/agent-wizard/bin/agent-wizard.js --version
 
       - name: Homebrew install smoke (macOS only)
-        if: runner.os == 'macOS' && env.TAP_REPO != ''
+        if: runner.os == 'macOS'
         env:
           TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO }}
         run: |
+          if [ -z "${TAP_REPO}" ]; then
+            echo "HOMEBREW_TAP_REPO secret not set; skipping Homebrew smoke."
+            exit 0
+          fi
           brew tap "${TAP_REPO}"
           brew install agent-wizard
           agent-wizard --version

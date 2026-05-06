@@ -5,13 +5,13 @@ This package installs a thin Node.js wrapper that downloads the platform-specifi
 ## Usage
 
 ```bash
-npx agent-wizard --version
+npx @aryaashish/agent-wizard --version
 ```
 
 or
 
 ```bash
-npm i -g agent-wizard
+npm i -g @aryaashish/agent-wizard
 agent-wizard --version
 ```
 

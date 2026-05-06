@@ -9,7 +9,7 @@
 
 - [ ] GitHub release assets uploaded (all platforms + checksums)
 - [ ] Install script tested (`curl .../install.sh | sh`)
-- [ ] npm wrapper published (`npx agent-wizard --version`)
+- [ ] npm wrapper published (`npx @aryaashish/agent-wizard --version`)
 - [ ] Homebrew tap formula updated and install verified
 
 ## Verification Commands
