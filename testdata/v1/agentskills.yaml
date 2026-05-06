@@ -1,0 +1,14 @@
+schemaVersion: 1
+installMode: manifest-only
+targetDir: .agents/skills
+sources:
+  - local-lib
+skills:
+  - pr-review
+packs:
+  - android-starter
+profiles:
+  - name: default
+    targets:
+      - kind: agents
+        path: .agents/skills
