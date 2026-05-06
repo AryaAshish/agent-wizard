@@ -16,6 +16,7 @@ fi
 VERSION="${VERSION#v}"
 
 mkdir -p "$DIST_DIR"
+DIST_DIR="$(cd "$DIST_DIR" && pwd)"
 rm -f "$DIST_DIR"/agent-wizard_* "$DIST_DIR"/checksums.txt
 
 build_target() {
