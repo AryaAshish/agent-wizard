@@ -71,8 +71,16 @@ func LibraryRoot(cfg config.Config, manifestSources []string) (string, error) {
 	return "", fmt.Errorf("no sources configured")
 }
 
+// ResolveSource returns the effective config.Source used to materialize a named source (including embedded community fallback).
+func ResolveSource(cfg config.Config, name string) (config.Source, bool) {
+	return resolveSource(cfg, name)
+}
+
 func resolveSource(cfg config.Config, name string) (config.Source, bool) {
 	if src, ok := cfg.GetSource(name); ok {
+		if name == community.SourceName && IsLegacyCommunityGitSource(src) {
+			return config.Source{Name: community.SourceName, Kind: community.SourceKind}, true
+		}
 		return src, true
 	}
 	if name == community.SourceName {
