@@ -18,6 +18,16 @@ func TestRunHelp(t *testing.T) {
 	}
 }
 
+func TestRunSubcommandHelp(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"help", "add"}, &out); err != nil {
+		t.Fatalf("run(help add) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage: agent-wizard add") {
+		t.Fatalf("run(help add) output missing add usage: %q", out.String())
+	}
+}
+
 func TestRunList(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "plan-review")
@@ -51,6 +61,9 @@ func TestRunInitAddRemove(t *testing.T) {
 	}
 	if err := run([]string{"add", "pr-review"}, &out); err != nil {
 		t.Fatalf("run(add) error = %v", err)
+	}
+	if err := run([]string{"add", "pr-review", "-android"}, &out); err != nil {
+		t.Fatalf("run(add -android) error = %v", err)
 	}
 	if err := run([]string{"remove", "pr-review"}, &out); err != nil {
 		t.Fatalf("run(remove) error = %v", err)

@@ -6,6 +6,23 @@ Works with **Cursor, Claude Code, Codex**, and any agent that reads skill files.
 
 ---
 
+## 30-second quick start
+
+```bash
+agent-wizard init
+agent-wizard sources add --name examples --kind local --path ./examples/library
+agent-wizard list --source-name examples
+```
+
+Then install one skill:
+
+```bash
+agent-wizard add pr-review -examples
+agent-wizard sync
+```
+
+---
+
 ## Step 1 — Install
 
 **macOS / Linux:**
@@ -50,19 +67,18 @@ This creates an `agentskills.yaml` file in your project root. That file tracks w
 
 ## Step 3 — Explore and install community skills
 
-Browse available skills from any public skill library:
+Browse available skills from any library source:
 
 ```bash
-# Point at a community library
-agent-wizard sources add --name community --kind git \
-  --gitUrl https://github.com/AryaAshish/agent-skills-community.git
+# Point at a library folder (local clone or local path)
+agent-wizard sources add --name community --kind local --path /path/to/community-library
 
 # See what's available
 agent-wizard list --source-name community
 
-# Add individual skills
-agent-wizard add pr-review
-agent-wizard add plan-review
+# Add individual skills from that source
+agent-wizard add pr-review --source community
+agent-wizard add plan-review -community
 
 # Or add a whole pack (a bundle of related skills)
 agent-wizard pack add android-starter
@@ -102,8 +118,7 @@ Every team member runs these two commands once:
 
 ```bash
 # Register your team's private skill library
-agent-wizard sources add --name my-team --kind git \
-  --gitUrl https://github.com/your-org/my-team-skills.git
+agent-wizard sources add --name my-team --kind local --path /path/to/my-team-skills
 
 # See all team skills
 agent-wizard list --source-name my-team
@@ -112,7 +127,9 @@ agent-wizard list --source-name my-team
 Then in any project:
 
 ```bash
-agent-wizard add my-team/deploy-checklist
+agent-wizard add deploy-checklist --source my-team
+# shorthand:
+# agent-wizard add deploy-checklist -my-team
 agent-wizard sync
 ```
 
@@ -215,8 +232,10 @@ You can point `agent-wizard` at three kinds of skill sources:
 | Type | Command | Best for |
 |------|---------|----------|
 | **Local folder** | `sources add --name dev --kind local --path ~/my-skills` | Developing skills locally |
-| **Git repo** | `sources add --name team --kind git --gitUrl https://...` | Team & community libraries |
-| **Zip archive** | `sources add --name release --kind archive --archiveUrl https://...` | Pinned release snapshots |
+| **Git repo** | Configure in `.agent-wizard-config.yaml` (`kind: git`, `gitUrl`, optional `gitRef`) | Team/community repos |
+| **Zip archive** | Configure in `.agent-wizard-config.yaml` (`kind: archive`, `archiveUrl`) | Pinned release snapshots |
+
+Note: CLI `sources add` currently supports local path registration directly. Git/archive sources are supported by the engine and can be added through config file entries.
 
 ---
 
@@ -225,7 +244,9 @@ You can point `agent-wizard` at three kinds of skill sources:
 | Command | What it does |
 |---------|--------------|
 | `init` | Create `agentskills.yaml` in your project |
-| `add SKILL` | Add a skill to your project |
+| `help <command>` | Show detailed help for a command |
+| `add SKILL --source NAME` | Add a skill from a specific source |
+| `add SKILL -NAME` | Shorthand source selector (for example `-android`) |
 | `remove SKILL` | Remove a skill |
 | `pack add PACK` | Add a skill bundle |
 | `list --source-name NAME` | Browse skills in a source |

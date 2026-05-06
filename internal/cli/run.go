@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/aryaashish/agent-wizard/internal/config"
 	"github.com/aryaashish/agent-wizard/internal/engine"
@@ -21,8 +22,20 @@ func run(args []string, stdout io.Writer) error {
 		return nil
 	}
 
+	if len(args) > 1 && isHelpFlag(args[1]) {
+		if printCommandHelp(args[0], stdout) {
+			return nil
+		}
+	}
+
 	switch args[0] {
 	case "--help", "-h", "help":
+		if len(args) > 1 {
+			if printCommandHelp(args[1], stdout) {
+				return nil
+			}
+			return fmt.Errorf("unknown help topic %q", args[1])
+		}
 		printHelp(stdout)
 		return nil
 	case "init":
@@ -56,6 +69,10 @@ func run(args []string, stdout io.Writer) error {
 	case "import":
 		return runImport(args[1:], stdout)
 	case "pack":
+		if len(args) >= 3 && args[1] == "add" && isHelpFlag(args[2]) {
+			printCommandHelp("pack add", stdout)
+			return nil
+		}
 		if len(args) < 2 || args[1] != "add" {
 			return fmt.Errorf("unknown pack command (try: pack add <id>)")
 		}
@@ -78,8 +95,8 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "")
 	fmt.Fprintln(stdout, "Commands:")
 	fmt.Fprintln(stdout, "  init     Initialize agentskills.yaml in current project")
-	fmt.Fprintln(stdout, "  list     List discovered skills from a source path")
-	fmt.Fprintln(stdout, "  add      Add skill to project manifest")
+	fmt.Fprintln(stdout, "  list     List available skills from a source")
+	fmt.Fprintln(stdout, "  add      Add skill to manifest (supports source qualifier)")
 	fmt.Fprintln(stdout, "  remove   Remove skill from project manifest")
 	fmt.Fprintln(stdout, "  status   Show manifest/source status (+ --json/--check-drifts)")
 	fmt.Fprintln(stdout, "  sync     Sync selected skills to target dir")
@@ -95,6 +112,10 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "  catalog  Curated index validation")
 	fmt.Fprintln(stdout, "  icp      Set or validate target ICP")
 	fmt.Fprintln(stdout, "  help     Show this help message")
+	fmt.Fprintln(stdout, "")
+	fmt.Fprintln(stdout, "Tip:")
+	fmt.Fprintln(stdout, "  agent-wizard <command> --help")
+	fmt.Fprintln(stdout, "  agent-wizard help <command>")
 }
 
 func runInit(stdout io.Writer) error {
@@ -114,6 +135,33 @@ func runAdd(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("add requires a skill id")
 	}
+	skillID := args[0]
+	sourceShorthand := ""
+	remaining := args[1:]
+	if len(remaining) > 0 && strings.HasPrefix(remaining[0], "-") && !strings.HasPrefix(remaining[0], "--") && remaining[0] != "-h" {
+		sourceShorthand = strings.TrimPrefix(remaining[0], "-")
+		remaining = remaining[1:]
+	}
+	fs := flag.NewFlagSet("add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var sourceName string
+	fs.StringVar(&sourceName, "source", "", "source alias used to qualify skill id")
+	fs.StringVar(&sourceName, "s", "", "source alias used to qualify skill id (shorthand)")
+	if err := fs.Parse(remaining); err != nil {
+		return err
+	}
+	if sourceShorthand != "" && sourceName != "" {
+		return fmt.Errorf("use either shorthand -<source> or --source, not both")
+	}
+	if sourceName == "" {
+		sourceName = sourceShorthand
+	}
+	if sourceName != "" && strings.Contains(skillID, "/") {
+		return fmt.Errorf("skill %q is already source-qualified", skillID)
+	}
+	if sourceName != "" {
+		skillID = sourceName + "/" + skillID
+	}
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -122,12 +170,55 @@ func runAdd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	m.Skills = engine.AddUnique(m.Skills, args[0])
+	m.Skills = engine.AddUnique(m.Skills, skillID)
 	if err := manifest.Save(wd, m); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "added %s\n", args[0])
+	fmt.Fprintf(stdout, "added %s\n", skillID)
 	return nil
+}
+
+func isHelpFlag(arg string) bool {
+	return arg == "--help" || arg == "-h"
+}
+
+func printCommandHelp(command string, stdout io.Writer) bool {
+	switch command {
+	case "list":
+		fmt.Fprintln(stdout, "Usage: agent-wizard list [--source PATH | --source-name NAME | --installed]")
+		fmt.Fprintln(stdout, "Examples:")
+		fmt.Fprintln(stdout, "  agent-wizard list --source ./examples/library")
+		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
+		fmt.Fprintln(stdout, "  agent-wizard list --installed")
+		return true
+	case "add":
+		fmt.Fprintln(stdout, "Usage: agent-wizard add <skill-id> [--source NAME]")
+		fmt.Fprintln(stdout, "Shortcut:")
+		fmt.Fprintln(stdout, "  agent-wizard add <skill-id> -<source>")
+		fmt.Fprintln(stdout, "Examples:")
+		fmt.Fprintln(stdout, "  agent-wizard add pr-review --source android")
+		fmt.Fprintln(stdout, "  agent-wizard add pr-review -android")
+		return true
+	case "sources":
+		fmt.Fprintln(stdout, "Usage:")
+		fmt.Fprintln(stdout, "  agent-wizard sources list")
+		fmt.Fprintln(stdout, "  agent-wizard sources add --name NAME --kind local|git|archive --path PATH")
+		fmt.Fprintln(stdout, "  agent-wizard sources remove NAME")
+		return true
+	case "pack", "pack add":
+		fmt.Fprintln(stdout, "Usage: agent-wizard pack add <pack-id>")
+		fmt.Fprintln(stdout, "Example:")
+		fmt.Fprintln(stdout, "  agent-wizard pack add android-starter")
+		return true
+	case "sync":
+		fmt.Fprintln(stdout, "Usage: agent-wizard sync [--dry-run|--check] [--prune] [--strict-lock]")
+		return true
+	case "status":
+		fmt.Fprintln(stdout, "Usage: agent-wizard status [--json] [--check-drifts] [--strict-digest]")
+		return true
+	default:
+		return false
+	}
 }
 
 func runRemove(args []string, stdout io.Writer) error {
