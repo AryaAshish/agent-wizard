@@ -1,49 +1,34 @@
 # agent-wizard
 
-A **local-first CLI** for managing reusable **agent skills** across projects. One tool to discover, pin, sync, and share skills for Cursor, Claude Code, Codex, and any future agent — without a mandatory company-wide skills server.
+Manage AI agent skills across all your projects. Install community skills, create your own, share them privately with your team — all from one CLI.
+
+Works with **Cursor, Claude Code, Codex**, and any agent that reads skill files.
 
 ---
 
-## Install
+## Step 1 — Install
 
-### macOS (Homebrew — coming soon)
-
-```bash
-# From source (requires Go 1.22+)
-go install github.com/AryaAshish/agent-wizard@latest
-```
-
-### macOS / Linux (install script)
+**macOS / Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
 ```
 
-This installs the binary into `$GOBIN` (default `~/go/bin`). Make sure it is on your `PATH`:
+**Or build from source** (requires Go 1.22+):
 
 ```bash
-export PATH="$HOME/go/bin:$PATH"
+go install github.com/AryaAshish/agent-wizard@latest
 ```
 
-### Linux (from source)
-
-```bash
-git clone https://github.com/AryaAshish/agent-wizard.git
-cd agent-wizard
-go build -o agent-wizard .
-sudo mv agent-wizard /usr/local/bin/
-```
-
-### Windows (from source)
+**Windows** (from source):
 
 ```powershell
 git clone https://github.com/AryaAshish/agent-wizard.git
 cd agent-wizard
 go build -o agent-wizard.exe .
-# Move agent-wizard.exe to a directory on your PATH
 ```
 
-### Verify installation
+Make sure the binary is on your `PATH`, then verify:
 
 ```bash
 agent-wizard help
@@ -51,136 +36,144 @@ agent-wizard help
 
 ---
 
-## Quickstart: new project setup
+## Step 2 — Set up your project
 
-### 1. Initialize the manifest
-
-Open your project folder in your terminal (e.g. in Cursor's integrated terminal):
+Open your project in Cursor (or any editor) and run:
 
 ```bash
-cd /path/to/my-app
 agent-wizard init
 ```
 
-This creates `agentskills.yaml` with sensible defaults (`manifest-only` mode, target `.agents/skills`).
+This creates an `agentskills.yaml` file in your project root. That file tracks which skills your project uses.
 
-### 2. Register a skill source
+---
 
-Point the CLI at a skill library — a local folder, a Git repo, or an archive URL.
+## Step 3 — Explore and install community skills
 
-**Local path** (fastest for development):
-
-```bash
-agent-wizard sources add --name my-lib --kind local --path ~/skills-library
-```
-
-**Git remote** (team library):
+Browse available skills from any public skill library:
 
 ```bash
-agent-wizard sources add --name team --kind git \
-  --path . \
-  --gitUrl https://github.com/your-org/agent-skills.git
-```
+# Point at a community library
+agent-wizard sources add --name community --kind git \
+  --gitUrl https://github.com/AryaAshish/agent-skills-community.git
 
-**Archive URL** (immutable release snapshot):
+# See what's available
+agent-wizard list --source-name community
 
-```bash
-agent-wizard sources add --name release --kind archive \
-  --path . \
-  --archiveUrl https://example.com/skills-v1.0.0.zip
-```
-
-List configured sources:
-
-```bash
-agent-wizard sources list
-```
-
-### 3. Wire sources into your project manifest
-
-Edit `agentskills.yaml` and add source names under `sources:`:
-
-```yaml
-schemaVersion: 1
-targetDir: .agents/skills
-installMode: manifest-only
-sources:
-  - my-lib
-skills: []
-packs: []
-```
-
-### 4. Add skills or packs
-
-```bash
-# Add a single skill
+# Add individual skills
 agent-wizard add pr-review
+agent-wizard add plan-review
 
-# Or add an entire pack (a bundle of related skills)
+# Or add a whole pack (a bundle of related skills)
 agent-wizard pack add android-starter
 ```
 
-### 5. Pin versions with a lockfile
+Sync the skills into your project:
+
+```bash
+agent-wizard sync
+```
+
+That's it. The skills are now in `.agents/skills/` and your AI agent can use them immediately.
+
+---
+
+## Step 4 — Create and share your own skills (private to your team)
+
+### Create a skill
+
+A skill is just a folder with a `SKILL.md` file:
+
+```
+my-team-skills/
+  deploy-checklist/
+    SKILL.md
+  code-review-guidelines/
+    SKILL.md
+  security-audit/
+    SKILL.md
+```
+
+Push this to a **private** Git repo that your team has access to.
+
+### Share with your team
+
+Every team member runs these two commands once:
+
+```bash
+# Register your team's private skill library
+agent-wizard sources add --name my-team --kind git \
+  --gitUrl https://github.com/your-org/my-team-skills.git
+
+# See all team skills
+agent-wizard list --source-name my-team
+```
+
+Then in any project:
+
+```bash
+agent-wizard add my-team/deploy-checklist
+agent-wizard sync
+```
+
+Your skills stay in your private repo. No one outside your org can see them. But every teammate with repo access can install them in one command.
+
+### Packs — bundle multiple skills together
+
+Create a file called `.agent-wizard-pack.yaml` in your library:
+
+```yaml
+name: onboarding-kit
+skills:
+  - code-review-guidelines
+  - deploy-checklist
+  - security-audit
+```
+
+Now any teammate can install the whole bundle:
+
+```bash
+agent-wizard pack add onboarding-kit
+agent-wizard sync
+```
+
+---
+
+## Step 5 — Lock versions and keep your team in sync
+
+Pin the exact versions everyone should use:
 
 ```bash
 agent-wizard lock
 ```
 
-This writes `agentskills.lock` with resolved refs and content digests.
-
-### 6. Sync skills into your project
+This creates `agentskills.lock` — commit it to your repo. Now when a teammate clones the project:
 
 ```bash
-# Preview what will happen
-agent-wizard sync --dry-run
-
-# Actually copy skills into .agents/skills/
-agent-wizard sync
+agent-wizard sync --strict-lock
 ```
 
-### 7. Check status
+Everyone gets the exact same skill versions. No surprises.
+
+Check if anything has drifted:
 
 ```bash
-# Human-readable
-agent-wizard status
-
-# Machine-readable JSON (for CI)
-agent-wizard status --json
-
-# Detect drift against lockfile (exit code 3 on drift)
 agent-wizard status --check-drifts
 ```
 
 ---
 
-## Using with Cursor IDE
+## Use with different agents
 
-```bash
-# In Cursor's integrated terminal:
-cd /path/to/my-project
-agent-wizard init
-agent-wizard sources add --name lib --kind local --path /path/to/skills
-agent-wizard add pr-review
-agent-wizard sync
+**Cursor** — works out of the box, skills go to `.agents/skills/`.
 
-# Skills are now in .agents/skills/ — Cursor reads them automatically
+**Claude Code** — change the target directory in `agentskills.yaml`:
+
+```yaml
+targetDir: .claude/skills
 ```
 
-## Using with Claude Code
-
-```bash
-# Configure target dir for Claude's expected path
-# Edit agentskills.yaml:
-#   targetDir: .claude/skills
-
-agent-wizard init
-# ... same flow as above ...
-agent-wizard sync
-```
-
-## Using with any agent tool
-
-Edit `agentskills.yaml` and set `targetDir` to wherever your agent reads skills from, or use **profiles** for multi-agent output:
+**Multiple agents at once** — use profiles:
 
 ```yaml
 profiles:
@@ -196,84 +189,65 @@ profiles:
 
 ---
 
-## All commands
+## CI — enforce skills in your pipeline
 
-| Command | Description |
-|---------|-------------|
-| `agent-wizard help` | Show help |
-| `agent-wizard init` | Create `agentskills.yaml` in current directory |
-| `agent-wizard sources list\|add\|remove` | Manage source registry (`local`, `git`, `archive`) |
-| `agent-wizard list --source DIR` | List skills available in a source directory |
-| `agent-wizard list --source-name NAME` | List skills from a configured source |
-| `agent-wizard list --installed` | List skills selected by current manifest |
-| `agent-wizard add SKILL` | Add a skill to the manifest |
-| `agent-wizard remove SKILL` | Remove a skill from the manifest |
-| `agent-wizard pack add PACK` | Add a pack (bundle of skills) to the manifest |
-| `agent-wizard lock` | Write `agentskills.lock` with pinned versions/digests |
-| `agent-wizard sync` | Copy selected skills into target directories |
-| `agent-wizard sync --dry-run` | Preview sync without writing files |
-| `agent-wizard sync --prune` | Remove skill dirs not in manifest (destructive) |
-| `agent-wizard sync --strict-lock` | Fail if skills don't match lockfile pins |
-| `agent-wizard status` | Show manifest and source status |
-| `agent-wizard status --json` | Emit status as JSON |
-| `agent-wizard status --check-drifts` | Compare lockfile vs live sources (exit 3 on drift) |
-| `agent-wizard migrate` | Backup manifest and normalize to current schema |
-| `agent-wizard cache status\|prune` | Inspect or clear local cache |
-| `agent-wizard ci-check` | Validate env policy gates for CI |
-| `agent-wizard catalog validate FILE` | Validate a curated index YAML file |
-| `agent-wizard import --from DIR --into DIR` | Import existing skill trees into a library |
-| `agent-wizard browse [DIR]` | Interactive skill picker (stdin) |
-| `agent-wizard watch` | Poll-based auto-sync loop |
-| `agent-wizard icp MODE` | Validate ICP mode (`solo\|team\|enterprise`) |
-
----
-
-## Source kinds
-
-| Kind | Config fields | Notes |
-|------|---------------|-------|
-| `local` | `path` | Fastest for local development and air-gapped setups |
-| `git` | `gitUrl`, `gitRef`, `subdir` | Clones/updates to XDG cache; pins by commit SHA |
-| `archive` | `archiveUrl` | Downloads zip with safe extraction guards |
-
----
-
-## Team workflow
-
-1. **Author** publishes a skill (folder with `SKILL.md`) to the team's shared library (Git repo or shared path).
-2. **Each project** declares which skills it uses in `agentskills.yaml`.
-3. **Teammates** clone the repo and run `agent-wizard sync` — everyone gets the same skills.
-4. **Updates** flow through the library; teams run `agent-wizard sync` or CI detects drift automatically.
-
----
-
-## CI integration
+Add to your CI script:
 
 ```bash
-# In your CI pipeline:
 agent-wizard sync --strict-lock    # fail if lockfile doesn't match
-agent-wizard status --check-drifts # exit 3 if drift detected
+agent-wizard status --check-drifts # exit code 3 if drift detected
+agent-wizard ci-check              # validate policy gates
+```
 
-# Optional env-based policy gates:
-export AGENT_WIZARD_ALLOWED_SOURCES="team-lib,community"
+Set policy via environment variables:
+
+```bash
+export AGENT_WIZARD_ALLOWED_SOURCES="my-team,community"
 export AGENT_WIZARD_MIN_SCHEMA_VERSION=1
-agent-wizard ci-check
 ```
 
 ---
 
-## Skill format
+## Source types
 
-Any directory containing a `SKILL.md` file is treated as a skill. The directory name becomes the skill ID.
+You can point `agent-wizard` at three kinds of skill sources:
 
-```
-my-library/
-  pr-review/
-    SKILL.md        # required
-    examples/       # optional supporting files
-  plan-review/
-    SKILL.md
-```
+| Type | Command | Best for |
+|------|---------|----------|
+| **Local folder** | `sources add --name dev --kind local --path ~/my-skills` | Developing skills locally |
+| **Git repo** | `sources add --name team --kind git --gitUrl https://...` | Team & community libraries |
+| **Zip archive** | `sources add --name release --kind archive --archiveUrl https://...` | Pinned release snapshots |
+
+---
+
+## All commands
+
+| Command | What it does |
+|---------|--------------|
+| `init` | Create `agentskills.yaml` in your project |
+| `add SKILL` | Add a skill to your project |
+| `remove SKILL` | Remove a skill |
+| `pack add PACK` | Add a skill bundle |
+| `list --source-name NAME` | Browse skills in a source |
+| `list --installed` | See what's installed |
+| `sync` | Copy skills into your project |
+| `sync --dry-run` | Preview without writing |
+| `sync --prune` | Remove skills not in manifest |
+| `sync --strict-lock` | Fail if lockfile mismatch |
+| `lock` | Pin current versions |
+| `status` | Show project status |
+| `status --json` | Status as JSON |
+| `status --check-drifts` | Detect lockfile drift |
+| `sources list` | Show configured sources |
+| `sources add` | Register a new source |
+| `sources remove` | Remove a source |
+| `migrate` | Upgrade manifest schema |
+| `cache status` | Show cache info |
+| `cache prune` | Clear cached downloads |
+| `ci-check` | Run CI policy checks |
+| `browse` | Interactive skill picker |
+| `watch` | Auto-sync on changes |
+| `import --from DIR --into DIR` | Import existing skills |
 
 ---
 
@@ -281,22 +255,13 @@ my-library/
 
 - [Manifest schema](docs/spec/manifest-schema.md)
 - [Lockfile schema](docs/spec/lockfile-schema.md)
-- [Resolver precedence](docs/spec/resolver-precedence.md)
-- [Curated index schema](docs/spec/curated-index-schema.md)
 - [CLI contract](docs/cli-contract.md)
 - [Threat model](docs/security/threat-model.md)
-- [Trust model](docs/security/trust-model.md)
-- [Support matrix](docs/support-matrix.md)
-- [Privacy](docs/privacy.md)
-- [Compatibility](docs/compat.md)
 - [Release checklist](docs/release/release-checklist.md)
-- [Rollback runbook](docs/release/rollback-runbook.md)
-
----
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 
