@@ -92,6 +92,12 @@ agent-wizard --version
 
 If `agent-wizard --version` shows an older version, your shell might be using a stale binary path. Run `which agent-wizard`, open a new terminal, or run `hash -r` (bash/zsh) so `PATH` picks up `$HOME/go/bin`.
 
+### Troubleshooting: `agent-skills-community` / `Repository not found`
+
+Older setups stored the `community` source in **`~/.agent-wizard-config.yaml`** as a **git** remote pointing at `https://github.com/AryaAshish/agent-skills-community.git`, which no longer exists. Starter skills ship **inside the CLI** (embedded library), not from that repo.
+
+**Fix:** upgrade `agent-wizard`, then run **`agent-wizard init`** (in any project) or **`agent-wizard community fetch`** so the global config is rewritten to the embedded `community` source. Or edit `~/.agent-wizard-config.yaml` and remove the `community` git entry (or run `agent-wizard sources remove community` and run `init` again so the default is re-added).
+
 ---
 
 ## Step 2 — Set up your project
