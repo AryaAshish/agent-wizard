@@ -11,6 +11,30 @@ import (
 	"github.com/aryaashish/agent-wizard/internal/config"
 )
 
+func TestRunEmptyArgsShowsHelp(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{}, &out); err != nil {
+		t.Fatalf("run(empty) error = %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "Usage:") {
+		t.Fatalf("expected Usage: in non-TTY empty run, got:\n%s", s)
+	}
+	if !strings.Contains(s, "wizard") {
+		t.Fatalf("expected wizard in help tip, got:\n%s", s)
+	}
+}
+
+func TestRunHelpWizardCmd(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"help", "wizard"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Guided menu") {
+		t.Fatalf("help wizard: %q", out.String())
+	}
+}
+
 func TestRunHelp(t *testing.T) {
 	var out bytes.Buffer
 	if err := run([]string{"help"}, &out); err != nil {

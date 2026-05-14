@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"github.com/aryaashish/agent-wizard/internal/manifest"
 	"github.com/aryaashish/agent-wizard/internal/migrate"
 	"github.com/aryaashish/agent-wizard/internal/model"
+	"github.com/aryaashish/agent-wizard/internal/projectdir"
 	"github.com/aryaashish/agent-wizard/internal/skills"
 )
 
@@ -46,11 +48,19 @@ func runListExpanded(args []string, stdout io.Writer) error {
 	}
 
 	if installed {
-		wd, err := os.Getwd()
+		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		m, err := manifest.Load(wd)
+		pd, err := projectdir.ResolveForProjectOps(cwd)
+		if err != nil {
+			if errors.Is(err, projectdir.ErrNoManifest) {
+				return fmt.Errorf("%w\nhint: run `agent-wizard add` or `agent-wizard init` first", err)
+			}
+			return err
+		}
+		printProjectIfDifferent(stdout, cwd, pd)
+		m, err := manifest.Load(pd)
 		if err != nil {
 			return err
 		}
@@ -206,11 +216,16 @@ func runCreateSkill(args []string, stdout io.Writer) error {
 	if !createSkillIDRegexp.MatchString(skillID) {
 		return fmt.Errorf(`skill id %q is invalid — use lowercase letters, digits, and "-" only (e.g. my-review-checklist)`, skillID)
 	}
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(wd, skillID)
+	pd, err := projectdir.ResolveForInitOrAdd(cwd)
+	if err != nil {
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	dir := filepath.Join(pd, skillID)
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("./%s already exists — remove it or choose another id", skillID)
 	}
@@ -226,7 +241,7 @@ func runCreateSkill(args []string, stdout io.Writer) error {
 	ui.OK(fmt.Sprintf("created %s/SKILL.md", skillID))
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "Local testing:")
-	fmt.Fprintf(stdout, "  cd %s && agent-wizard list --source . --filter %s\n", wd, skillID)
+	fmt.Fprintf(stdout, "  cd %s && agent-wizard list --source . --filter %s\n", pd, skillID)
 	fmt.Fprintln(stdout, "  Or register that directory as a local source:")
 	fmt.Fprintln(stdout, "    agent-wizard sources add --name NAME --kind local --path ABS_PATH_TO_PARENT")
 	fmt.Fprintf(stdout, "    agent-wizard add %s --source NAME && agent-wizard sync\n", skillID)
@@ -252,11 +267,19 @@ func runStatusExpanded(args []string, stdout io.Writer) error {
 		return err
 	}
 
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(wd)
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from your project tree", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	m, err := manifest.Load(pd)
 	if err != nil {
 		return err
 	}
@@ -271,7 +294,7 @@ func runStatusExpanded(args []string, stdout io.Writer) error {
 
 	if jsonOut {
 		payload := map[string]any{
-			"manifest":          manifest.PathFromDir(wd),
+			"manifest":          manifest.PathFromDir(pd),
 			"targetDir":         m.TargetDir,
 			"installMode":       m.InstallMode,
 			"sources":           m.Sources,
@@ -286,7 +309,7 @@ func runStatusExpanded(args []string, stdout io.Writer) error {
 		return enc.Encode(payload)
 	}
 
-	fmt.Fprintf(stdout, "manifest: %s\n", manifest.PathFromDir(wd))
+	fmt.Fprintf(stdout, "manifest: %s\n", manifest.PathFromDir(pd))
 	fmt.Fprintf(stdout, "targetDir: %s\n", m.TargetDir)
 	fmt.Fprintf(stdout, "installMode: %s\n", m.InstallMode)
 	fmt.Fprintf(stdout, "schemaVersion: %d\n", m.SchemaVersion)
@@ -296,7 +319,7 @@ func runStatusExpanded(args []string, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "configuredSources: %d\n", len(cfg.Sources))
 
 	if checkDrifts {
-		msgs, ok, err := drift.Evaluate(wd, m, cfg, strictDigest)
+		msgs, ok, err := drift.Evaluate(pd, m, cfg, strictDigest)
 		if err != nil {
 			return err
 		}
@@ -311,11 +334,19 @@ func runStatusExpanded(args []string, stdout io.Writer) error {
 }
 
 func runLock(stdout io.Writer) error {
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(wd)
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from your project tree", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	m, err := manifest.Load(pd)
 	if err != nil {
 		return err
 	}
@@ -327,19 +358,27 @@ func runLock(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := engine.GenerateLockfile(wd, m, cfg); err != nil {
+	if err := engine.GenerateLockfile(pd, m, cfg); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "wrote %s\n", filepath.Join(wd, "agentskills.lock"))
+	fmt.Fprintf(stdout, "wrote %s\n", filepath.Join(pd, "agentskills.lock"))
 	return nil
 }
 
 func runMigrate(stdout io.Writer) error {
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	if err := migrate.Run(wd); err != nil {
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from your project tree", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	if err := migrate.Run(pd); err != nil {
 		return err
 	}
 	fmt.Fprintln(stdout, "migrate completed (backup saved alongside manifest)")
@@ -373,11 +412,19 @@ func runCache(args []string, stdout io.Writer) error {
 }
 
 func runCICheck(stdout io.Writer) error {
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(wd)
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from your project tree", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	m, err := manifest.Load(pd)
 	if err != nil {
 		return err
 	}
@@ -445,10 +492,18 @@ func runWatch(args []string, stdout io.Writer) error {
 	if interval < 250*time.Millisecond {
 		interval = 250 * time.Millisecond
 	}
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from your project tree", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
 	cfgPath, err := config.DefaultPath()
 	if err != nil {
 		return err
@@ -461,11 +516,11 @@ func runWatch(args []string, stdout io.Writer) error {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	runOnce := func() error {
-		m, err := manifest.Load(wd)
+		m, err := manifest.Load(pd)
 		if err != nil {
 			return err
 		}
-		return engine.Sync(wd, m, cfg, stdout, engine.SyncOpts{})
+		return engine.Sync(pd, m, cfg, stdout, engine.SyncOpts{})
 	}
 	for {
 		if err := runOnce(); err != nil {
@@ -541,16 +596,24 @@ func runPackAdd(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("pack add requires pack id")
 	}
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(wd)
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from your project tree", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	m, err := manifest.Load(pd)
 	if err != nil {
 		return err
 	}
 	m.Packs = engine.AddUnique(m.Packs, args[0])
-	if err := manifest.Save(wd, m); err != nil {
+	if err := manifest.Save(pd, m); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "added pack %s\n", args[0])

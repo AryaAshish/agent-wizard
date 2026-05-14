@@ -8,6 +8,10 @@ CLI installs versioned agent skills into your repo—one command, no Slack drift
 
 v0.1.3+: first `add` writes project config and runs **sync** (pass `--no-sync` to skip the copy step).
 
+Commands walk **upward** from your shell directory for `agentskills.yaml`; if it’s missing, the first **`add`** creates it at the **nearest Git repo root** (when `.git` exists above you). When your cwd isn’t that directory, the CLI prints **`project: /absolute/path`** so you know where files landed.
+
+**TTY:** run **`agent-wizard`** with no arguments, or **`agent-wizard wizard`** / **`guide`**, for a short guided menu (install a community skill or register a team Git URL).
+
 ## Use a community skill in this repo
 
 1. `curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh`
@@ -222,6 +226,7 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 
 | Command | What it does |
 |---------|--------------|
+| `wizard` / `guide` | Guided menu on an interactive terminal (install skill / add Git source) |
 | `init` | Create `agentskills.yaml` in your project |
 | `help <command>` | Show detailed help for a command |
 | `add SKILL --source NAME` | Add a skill from a specific source |
@@ -230,7 +235,7 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 | `pack add PACK` | Add a skill bundle |
 | `list --source-name NAME [--filter SUB]` | Browse skills (id + summary; sorted, aligned); optional id filter |
 | `list --installed` | See what's installed (same id + summary columns) |
-| `create-skill ID` | Create `./ID/SKILL.md` from template (local testing + contrib hints) |
+| `create-skill ID` | Create `<ID>/SKILL.md` from template (resolved next to manifest / git root like `add`) |
 | `sync` | Copy skills into your project |
 | `sync --dry-run` | Preview without writing |
 | `sync --prune` | Remove skills not in manifest |

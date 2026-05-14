@@ -15,14 +15,24 @@ import (
 	"github.com/aryaashish/agent-wizard/internal/engine"
 	"github.com/aryaashish/agent-wizard/internal/manifest"
 	"github.com/aryaashish/agent-wizard/internal/model"
+	"github.com/aryaashish/agent-wizard/internal/projectdir"
 )
 
 func Run(args []string) error {
 	return run(args, os.Stdout)
 }
 
+func printProjectIfDifferent(stdout io.Writer, cwd, projectDir string) {
+	if filepath.Clean(cwd) != filepath.Clean(projectDir) {
+		fmt.Fprintf(stdout, "project: %s\n", filepath.Clean(projectDir))
+	}
+}
+
 func run(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
+		if isInteractiveTerminal() {
+			return runWizard(stdout, os.Stdin)
+		}
 		printHelp(stdout)
 		return nil
 	}
@@ -94,6 +104,12 @@ func run(args []string, stdout io.Writer) error {
 			return fmt.Errorf("unknown community command (try: community fetch)")
 		}
 		return runCommunityFetch(stdout)
+	case "wizard", "guide":
+		if !isInteractiveTerminal() {
+			fmt.Fprintln(stdout, "wizard requires an interactive terminal. Example: agent-wizard add pr-review --source community")
+			return nil
+		}
+		return runWizard(stdout, os.Stdin)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -124,11 +140,13 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "  pack     Pack helpers (pack add)")
 	fmt.Fprintln(stdout, "  catalog  Curated index validation")
 	fmt.Fprintln(stdout, "  community Refresh bundled community starter assets (community fetch)")
+	fmt.Fprintln(stdout, "  wizard   Guided menu (TTY); alias: guide")
 	fmt.Fprintln(stdout, "  icp      Set or validate target ICP")
 	fmt.Fprintln(stdout, "  version  Show CLI version/build info")
 	fmt.Fprintln(stdout, "  help     Show this help message")
 	fmt.Fprintln(stdout, "")
 	fmt.Fprintln(stdout, "Tip:")
+	fmt.Fprintln(stdout, "  Interactive (TTY): run agent-wizard with no arguments, or: agent-wizard wizard")
 	fmt.Fprintln(stdout, "  agent-wizard <command> --help")
 	fmt.Fprintln(stdout, "  agent-wizard help <command>")
 }
@@ -144,15 +162,20 @@ func printInitNextSteps(stdout io.Writer) {
 func runInit(stdout io.Writer) error {
 	ui := newUI(stdout)
 	ui.Header("project init")
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
+	pd, err := projectdir.ResolveForInitOrAdd(cwd)
+	if err != nil {
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
 	var m manifest.Manifest
-	m, err = manifest.Init(wd)
+	m, err = manifest.Init(pd)
 	if err != nil {
 		if strings.Contains(err.Error(), "manifest already exists") {
-			m, err = manifest.Load(wd)
+			m, err = manifest.Load(pd)
 			if err != nil {
 				return err
 			}
@@ -165,7 +188,7 @@ func runInit(stdout io.Writer) error {
 		return err
 	}
 	m.Sources = engine.AddUnique(m.Sources, community.SourceName)
-	if err := manifest.Save(wd, m); err != nil {
+	if err := manifest.Save(pd, m); err != nil {
 		return err
 	}
 	ui.OK(fmt.Sprintf("initialized %s with targetDir=%s", manifest.FileName, m.TargetDir))
@@ -187,10 +210,10 @@ func runInit(stdout io.Writer) error {
 		m.Skills = engine.AddUnique(m.Skills, community.SourceName+"/"+s)
 		installed = append(installed, "skill:"+community.SourceName+"/"+s)
 	}
-	if err := manifest.Save(wd, m); err != nil {
+	if err := manifest.Save(pd, m); err != nil {
 		return err
 	}
-	if err := runSync([]string{}, stdout); err != nil {
+	if err := runSyncAt(pd, []string{}, stdout); err != nil {
 		return err
 	}
 	ui.Section("Summary")
@@ -272,12 +295,17 @@ func runAdd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	m, err := loadManifestOrHeadlessInit(wd)
+	pd, err := projectdir.ResolveForInitOrAdd(wd)
+	if err != nil {
+		return err
+	}
+	printProjectIfDifferent(stdout, wd, pd)
+	m, err := loadManifestOrHeadlessInit(pd)
 	if err != nil {
 		return err
 	}
 	m.Skills = engine.AddUnique(m.Skills, skillID)
-	if err := manifest.Save(wd, m); err != nil {
+	if err := manifest.Save(pd, m); err != nil {
 		return err
 	}
 	ref, err := model.ParseSkillRef(skillID)
@@ -289,7 +317,7 @@ func runAdd(args []string, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "hint: run `agent-wizard sync` to copy skills to disk\n")
 		return nil
 	}
-	if err := runSync([]string{}, stdout); err != nil {
+	if err := runSyncAt(pd, []string{}, stdout); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "✔ Installed %s\n", ref.ID)
@@ -327,8 +355,8 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 		return true
 	case "add":
 		fmt.Fprintln(stdout, "Usage: agent-wizard add <skill-id> [--source NAME] [--no-sync]")
-		fmt.Fprintln(stdout, "Creates agentskills.yaml if missing (headless init with community source), updates the manifest,")
-		fmt.Fprintln(stdout, "then runs sync by default. Use --no-sync to only write the manifest.")
+		fmt.Fprintln(stdout, "Creates agentskills.yaml if missing (under nearest git root when found), wires community source,")
+		fmt.Fprintln(stdout, "updates the manifest, then runs sync by default. Use --no-sync to only write the manifest.")
 		fmt.Fprintln(stdout, "Shortcut:")
 		fmt.Fprintln(stdout, "  agent-wizard add <skill-id> -<source>")
 		fmt.Fprintln(stdout, "Examples:")
@@ -359,6 +387,11 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 	case "community":
 		fmt.Fprintln(stdout, "Usage: agent-wizard community fetch")
 		return true
+	case "wizard", "guide":
+		fmt.Fprintln(stdout, "Usage: agent-wizard wizard")
+		fmt.Fprintln(stdout, " Guided menu (TTY only): install community skills or add a team Git source.")
+		fmt.Fprintln(stdout, " Same as running agent-wizard with no arguments when stdin/stdout are a terminal.")
+		return true
 	default:
 		return false
 	}
@@ -368,16 +401,24 @@ func runRemove(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("remove requires a skill id")
 	}
-	wd, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(wd)
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("%w\nhint: run from inside your project tree or cd to the directory with agentskills.yaml", err)
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	m, err := manifest.Load(pd)
 	if err != nil {
 		return err
 	}
 	m.Skills = engine.RemoveValue(m.Skills, args[0])
-	if err := manifest.Save(wd, m); err != nil {
+	if err := manifest.Save(pd, m); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "removed %s\n", args[0])
@@ -385,6 +426,22 @@ func runRemove(args []string, stdout io.Writer) error {
 }
 
 func runSync(args []string, stdout io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	pd, err := projectdir.ResolveForProjectOps(cwd)
+	if err != nil {
+		if errors.Is(err, projectdir.ErrNoManifest) {
+			return fmt.Errorf("agentskills.yaml not found\nhint: run `agent-wizard add <skill> --source community` or `agent-wizard init` (manifest is found by walking up from the current directory)")
+		}
+		return err
+	}
+	printProjectIfDifferent(stdout, cwd, pd)
+	return runSyncAt(pd, args, stdout)
+}
+
+func runSyncAt(projectDir string, args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var dryRun bool
@@ -397,11 +454,7 @@ func runSync(args []string, stdout io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	m, err := manifest.Load(wd)
+	m, err := manifest.Load(projectDir)
 	if err != nil {
 		return fmt.Errorf("%w\nhint: fix agentskills.yaml YAML or run `agent-wizard init` in the project root", err)
 	}
@@ -414,7 +467,7 @@ func runSync(args []string, stdout io.Writer) error {
 		return err
 	}
 	opts := engine.SyncOpts{DryRun: dryRun, Prune: prune, StrictLock: strictLock}
-	if err := engine.Sync(wd, m, cfg, stdout, opts); err != nil {
+	if err := engine.Sync(projectDir, m, cfg, stdout, opts); err != nil {
 		return fmt.Errorf("%w\nhint: check agentskills.yaml sources and skill ids; try `agent-wizard list --source-name community` or `agent-wizard list --installed`", err)
 	}
 	if !dryRun {
