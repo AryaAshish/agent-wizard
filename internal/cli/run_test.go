@@ -92,7 +92,7 @@ func TestRunInitAddRemove(t *testing.T) {
 	if err := run([]string{"add", "pr-review"}, &out); err != nil {
 		t.Fatalf("run(add) error = %v", err)
 	}
-	if err := run([]string{"add", "pr-review", "-android"}, &out); err != nil {
+	if err := run([]string{"add", "pr-review", "-android", "--no-sync"}, &out); err != nil {
 		t.Fatalf("run(add -android) error = %v", err)
 	}
 	if err := run([]string{"remove", "pr-review"}, &out); err != nil {

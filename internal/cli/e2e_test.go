@@ -41,6 +41,30 @@ func TestEndUserFlow_EmbeddedCommunity_ListFilterAddSync(t *testing.T) {
 	}
 }
 
+func TestEndUserFlow_EmbeddedCommunity_AddColdStartNoInit(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	restore := setEnvAndCwd(t, map[string]string{"HOME": home}, project)
+	defer restore()
+
+	var out bytes.Buffer
+	if err := run([]string{"add", "pr-review", "--source", "community"}, &out); err != nil {
+		t.Fatalf("add (cold start): %v; out=%s", err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "✔ Installed pr-review") || !strings.Contains(s, "→ Open:") || !strings.Contains(s, ".agents/skills/pr-review/SKILL.md") {
+		t.Fatalf("unexpected add output:\n%s", s)
+	}
+	skillPath := filepath.Join(project, ".agents", "skills", "pr-review", "SKILL.md")
+	b, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("synced community skill missing: %v", err)
+	}
+	if !strings.Contains(string(b), "When to use") {
+		t.Fatalf("expected launch-ready SKILL sections, got head: %.200q", string(b))
+	}
+}
+
 func TestEndUserFlow_EmbeddedCommunity_PackAddSync(t *testing.T) {
 	project := t.TempDir()
 	home := t.TempDir()
@@ -97,7 +121,7 @@ func TestCLI_ErrorHints(t *testing.T) {
 			prep: func(t *testing.T, buf *bytes.Buffer) {
 				mustRun(t, []string{"init"}, buf)
 				buf.Reset()
-				mustRun(t, []string{"add", "definitely-nonexistent-skill-xyz", "--source", "community"}, buf)
+				mustRun(t, []string{"add", "definitely-nonexistent-skill-xyz", "--source", "community", "--no-sync"}, buf)
 			},
 			args:          []string{"sync"},
 			wantSubstring: "hint:",
@@ -127,8 +151,10 @@ func TestCLI_ErrorHints(t *testing.T) {
 			wantSubstring: "hint:",
 		},
 		{
-			name:          "add_without_manifest",
-			prep:          func(t *testing.T, buf *bytes.Buffer) {}, // cwd is empty temp project — no agentskills.yaml
+			name: "add_corrupt_manifest_yaml",
+			prep: func(t *testing.T, buf *bytes.Buffer) {
+				writeFile(t, filepath.Join(mustDetectWd(t), "agentskills.yaml"), "not: yaml: [[[ broken")
+			},
 			args:          []string{"add", "pr-review", "--source", "community"},
 			wantSubstring: "hint:",
 		},
@@ -234,7 +260,7 @@ func TestNegative_AmbiguousBareSkillNeedsNamespace(t *testing.T) {
 	m := readFile(t, filepath.Join(project, "agentskills.yaml"))
 	m = replaceSourcesList(m, "sources:\n    - a\n    - b")
 	writeFile(t, filepath.Join(project, "agentskills.yaml"), m)
-	mustRun(t, []string{"add", "pr-review"}, &out)
+	mustRun(t, []string{"add", "pr-review", "--no-sync"}, &out)
 	out.Reset()
 
 	err := run([]string{"sync", "--dry-run"}, &out)

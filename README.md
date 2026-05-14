@@ -8,34 +8,32 @@
 
 **Install:** `curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh` — or `npm i -g @aryaashish/agent-wizard` ([releases](https://github.com/AryaAshish/agent-wizard/releases)).
 
-**Why not only copy-paste:** The **next repo** repeats with the same three commands—no hunting Slack or Notion. Pin versions with `lock` / `sync --strict-lock` when your team needs one truth.
+**Why not only copy-paste:** The **next repo** repeats with **one command** (`add` initializes the manifest and syncs)—no hunting Slack or Notion. Pin versions with `lock` / `sync --strict-lock` when your team needs one truth.
 
 ### Why not just copy markdown?
 
 | Copy-paste | agent-wizard |
 |------------|----------------|
 | Playbooks drift across Slack / Notion | Playbooks live **next to your code**; `agentskills.yaml` records what this repo installs |
-| Re-copy every new service | **Second project:** same commands, same skill id |
+| Re-copy every new service | **Second project:** same `add … --source …` line, same skill id |
 | Everyone on different revisions | **`lock`** — teammates sync the **same** pinned revision |
 | Rewire paths per agent | **`targetDir` / profiles** — one manifest, multiple agent layouts |
 
 ## Happy path (first run)
 
-Non-interactive terminals skip the `init` picker automatically—run `add` + `sync` right after `init`.
+With no manifest yet, `add` creates `agentskills.yaml`, wires the bundled **community** source, and runs **sync** (use `--no-sync` if you only want the manifest updated).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
 hash -r 2>/dev/null || true
 agent-wizard --version
 mkdir -p /tmp/my-agent-demo && cd /tmp/my-agent-demo && git init -q
-agent-wizard init
-agent-wizard list --source-name community --filter pr
 agent-wizard add pr-review --source community
-agent-wizard sync
+# Optional: browse first — agent-wizard list --source-name community --filter pr
 test -f .agents/skills/pr-review/SKILL.md && echo "Skill on disk — open it in your editor."
 ```
 
-Interactive `init` can open the starter picker; you can still run the `list` / `add` / `sync` lines afterward. **[Bundled skill index →](docs/SKILLS.md)**
+Interactive **`init`** is still useful for the starter picker and browsing before you choose skills. **`add`** does not open the picker. **[Bundled skill index →](docs/SKILLS.md)**
 
 ---
 
