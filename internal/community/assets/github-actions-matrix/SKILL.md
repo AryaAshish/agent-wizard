@@ -1,66 +1,79 @@
 # GitHub Actions matrix workflow
 
-Stand up or refactor a GitHub Actions workflow for Go (or polyglot) repos: OS/arch matrix, Go/setup caching, concurrency cancellation, and artifact hygiene.
+Stand up or refactor GitHub Actions: matrix, setup caching, concurrency, test invocation.
 
 ## When to use
 
-- Bootstrapping CI on GitHub with reproducible installs across Linux/macOS/Windows (subset optional).
-- Replacing hand-rolled checkout scripts that skip caching.
+- Bootstrapping `.github/workflows/` for a repo.
+- Replacing ad-hoc CI without caching or cancel-in-progress.
 
 ## When not to use
 
-- Self-hosted runners with proprietary secrets topology—adapt runner labels first.
+- Self-hosted runner topology undefined (labels, secrets) and user cannot supply them.
 
 ## Inputs
 
-- Minimum Go version matrix rows you truly need (fewer rows = faster feedback).
-- Required secrets (`GITHUB_TOKEN` vs none).
+- `YOUR_REPO_ROOT`
+- `YOUR_WORKFLOW_PATH` (e.g. `.github/workflows/ci.yml`)
+- Languages: `YOUR_PRIMARY_LANG` (e.g. go)
+- `YOUR_GO_VERSION` if Go
 
 ## Outputs
 
-- Workflow YAML skeleton checked into `.github/workflows/ci.yml`.
+```
+FILE_ACTION:
+create|update YOUR_WORKFLOW_PATH
+
+YAML_BLOCKS:
+CONCURRENCY:
+- key line
+MATRIX:
+- os rows | tool versions
+STEPS:
+- ordered step summaries (no secrets)
+
+SECRETS:
+- required secret names only | none
+
+SUPPLY_CHAIN:
+- action pin note (major@sha or version policy)
+```
 
 ## Steps
 
-1. Scaffold workflow with concurrency cancel-in-progress per branch.
+1. Inspect existing workflows.
 
-```yaml
-# .github/workflows/ci.yml (snippet — merge into full jobs block)
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+```bash
+cd YOUR_REPO_ROOT
+find .github/workflows -name '*.yml' -o -name '*.yaml' 2>/dev/null | head
+test -f YOUR_WORKFLOW_PATH && head -n 80 YOUR_WORKFLOW_PATH || true
 ```
 
-2. Matrix strategy—avoid explosive combinations; prefer `ubuntu-latest` for default PR CI.
+2. Align test command with repo (Go example).
 
-```yaml
-strategy:
-  fail-fast: false
-  matrix:
-    os: [ubuntu-latest]
-    go-version: ["1.25.10"]
+```bash
+test -f go.mod && head -n 5 go.mod || echo "non-Go: set YOUR_TEST_CMD manually"
 ```
 
-3. Cache modules via `actions/setup-go` with `cache: true` keyed by `go.sum`.
+3. Concurrency + matrix template (adapt names).
 
-```yaml
-- uses: actions/setup-go@v5
-  with:
-    go-version: ${{ matrix.go-version }}
-    cache: true
+```bash
+grep -nE 'concurrency:|strategy:|matrix:' YOUR_WORKFLOW_PATH 2>/dev/null || true
 ```
 
-4. Run tests non-interactively—mirror local `-count=1`.
+## Stop and ask
 
-```yaml
-- run: go test ./... -count=1
-```
+Stop if `.github/` must be created and user did not confirm default branch name for `concurrency.group`—ask for `YOUR_DEFAULT_BRANCH`.
+
+## Reject if
+
+- YAML embeds long-lived PATs or private SSH keys.
+- Matrix explodes (>6 cells) without `fail-fast` or cost justification in `YAML_BLOCKS`.
 
 ## Safety
 
-- Never embed repo SSH keys or long-lived PATs in YAML—use OIDC or scoped secrets with rotation.
-- Third-party actions: pin major versions consciously; review supply-chain implications.
+- Prefer `GITHUB_TOKEN` with least permissions; OIDC where applicable.
 
 ## References
 
-- Combine with `go-ci-module` for Go-specific flags (`-race`, `-short`).
+- Pair with `go-ci-module` for Go flags (`-race`, `-short`, timeouts).

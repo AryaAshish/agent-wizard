@@ -1,49 +1,73 @@
 # Supabase / Postgres migration safety
 
-Review SQL migrations targeting Postgres (including Supabase-hosted): ordering, locks, rollback realism, RLS implications, and destructive ops.
+Review SQL migrations: ordering, locks, rollback realism, RLS, destructive ops. For **generic DB rollout plans** (non-Supabase-specific), use bundled `migration-planner`.
 
 ## When to use
 
-- Pull requests touching `*.sql`, Supabase CLI migrations, or schema dumps promoted to prod.
+- PR touches `*.sql`, `supabase/migrations`, or schema promoted to prod.
 
 ## When not to use
 
-- Local-only scratch databases—still avoid destructive defaults but urgency differs.
+- No migration files path and no SQL diff.
 
 ## Inputs
 
-- Migration filenames ordering convention (`YYYYMMDDHHMMSS_description.sql`).
-- Expected traffic pattern during deploy (online vs maintenance window).
+- `YOUR_REPO_ROOT`
+- `YOUR_SQL_DIR` (e.g. `supabase/migrations`)
+- Traffic: `YOUR_DEPLOY_WINDOW` online | maintenance
 
 ## Outputs
 
-- **SAFE / NEEDS REVISION** with bullet rationale referencing statements.
+```
+VERDICT: SAFE|NEEDS_REVISION
+
+ISSUES:
+- [lock|data_loss|rls|rollback|secret] YOUR_FILE → one line
+
+ROLLBACK_REALISM:
+- sufficient | weak | destructive_accepted
+
+RLS_NOTES:
+- bullet or "- n/a -"
+
+FOLLOW_UPS:
+- bullet or "- none -"
+```
 
 ## Steps
 
-1. Classify DDL: additive vs reordering columns vs drops/renames—drops **always** justify backups.
+1. List tail of migration chain.
 
 ```bash
-find supabase/migrations prisma/migrations db/migrations -name '*.sql' 2>/dev/null | tail -n 20
+cd YOUR_REPO_ROOT
+find YOUR_SQL_DIR -name '*.sql' 2>/dev/null | sort | tail -n 25
 ```
 
-2. Lock risk: long `ALTER TABLE` on hot paths—prefer additive nullable columns then backfill jobs.
-
-3. Rollback story: reversible migrations or paired down migrations—not “restore from backup” as only plan unless accepted.
-
-4. RLS/policies: new tables exposed via PostgREST must ship policies aligned with tenant model—grep `ENABLE ROW LEVEL SECURITY`.
+2. Scan destructive / policy patterns.
 
 ```bash
-rg -n "ROW LEVEL SECURITY|CREATE POLICY" YOUR_SQL_DIR || true
+grep -RInE 'DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM|ALTER TYPE|RENAME' -- YOUR_SQL_DIR 2>/dev/null | head -n 50
+grep -RInE 'ROW LEVEL SECURITY|CREATE POLICY|ENABLE ROW LEVEL SECURITY' -- YOUR_SQL_DIR 2>/dev/null | head -n 40
 ```
 
-5. Secrets: connection strings belong in CI/env—not committed `.env`.
+3. Latest files deep read (first ~80 lines each).
+
+```bash
+ls -lt YOUR_SQL_DIR 2>/dev/null | head -n 8
+```
+
+## Stop and ask
+
+Stop if `YOUR_SQL_DIR` does not exist and user gave no alternative glob.
+
+## Reject if
+
+- `VERDICT: SAFE` while `ISSUES` lists unresolved `data_loss` or missing rollback for destructive DDL without explicit `destructive_accepted` in `ROLLBACK_REALISM`.
 
 ## Safety
 
-- Never paste prod DB URLs into GitHub issues—rotate if leaked.
-- `DROP DATABASE`, `TRUNCATE ... CASCADE`, unchecked `DELETE` without `WHERE`—treat as incident-class unless staged.
+- Never paste prod DB URLs; rotate if leaked in chat.
 
 ## References
 
-- Pair with `launch-ready` before tagging releases touching schema.
+- Pair with `launch-ready` before tagging schema releases.

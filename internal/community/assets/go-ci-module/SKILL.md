@@ -1,51 +1,76 @@
 # Go module CI baseline
 
-Keep `go test` reliable in CI for services using Go modules: caching, race detector policy, `-count=1`, and module proxy hygiene.
+Keep `go test` reliable in CI: caching, race policy, `-count=1`, module proxy hygiene.
 
 ## When to use
 
-- Adding or tightening CI for a Go repo (`go.mod` present).
-- Flaky tests or mysterious cache hits hide real failures.
+- `go.mod` present; adding or tightening CI.
 
 ## When not to use
 
-- Libraries consumed only via Go workspace with bespoke vendor rules—adapt proxy/vendor flags first.
+- Non-Go repo (use ecosystem-specific skill).
 
 ## Inputs
 
-- Go version requirement (must match `go` directive tolerance).
-- Whether integration tests need Docker services (compose vs skip tags).
+- `YOUR_REPO_ROOT`
+- `YOUR_GO_VERSION` (policy string, e.g. `1.22`)
+- Integration tests: `YOUR_DOCKER_COMPOSE_FILE` or `none`
 
 ## Outputs
 
-- Copy-paste workflow snippet aligned with team policy (race on/off, short vs full suite).
+```
+RECOMMENDATIONS:
+- bullet (ordered)
+
+WORKFLOW_SNIPPET_LINES:
+- uses: actions/setup-go@YOUR_PIN
+- with: go-version: YOUR_GO_VERSION, cache: true
+- run: go test ./... -count=1
+
+CACHE_KEY_NOTE:
+- one line
+
+RACE_POLICY:
+- on|off|subset with reason
+
+RISKS:
+- bullet or "- none -"
+```
 
 ## Steps
 
-1. Verify modules tidy locally—fail CI if `go.sum` drift creeps in.
+1. Local baseline.
 
 ```bash
+cd YOUR_REPO_ROOT
 go version
 go mod verify
-go test ./... -count=1 -short 2>&1 | tail -n 40
+go test ./... -count=1 -short 2>&1 | tail -n 50
 ```
 
-2. Optional race build where runtime allows (may exclude `-short` packages).
+2. Race where affordable.
 
 ```bash
-go test ./... -count=1 -race -timeout=10m 2>&1 | tail -n 40
+go test ./... -count=1 -race -timeout=10m 2>&1 | tail -n 50
 ```
 
-3. CI cache keys: hash `go.sum` only—avoid caching `$GOPATH/pkg/mod` across Go upgrades blindly.
+3. Cache key material.
 
 ```bash
-sha256sum go.sum | awk '{print $1}'
+shasum -a 256 go.sum 2>/dev/null || sha256sum go.sum
 ```
+
+## Stop and ask
+
+Stop if `go.mod` is missing at `YOUR_REPO_ROOT`.
+
+## Reject if
+
+- Recommend `-race` on entire suite without timeout/shard when `go list ./...` implies very large packages—note `subset` instead.
 
 ## Safety
 
-- `-race` multiplies CPU—don’t enable on enormous suites without shards or timeouts.
-- Never echo module proxy tokens—use CI secret stores only.
+- Never echo `GOPROXY` tokens; CI secrets only.
 
 ## References
 

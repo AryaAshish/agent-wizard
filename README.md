@@ -311,8 +311,9 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 | `add SKILL -NAME` | Shorthand source selector (for example `-android`) |
 | `remove SKILL` | Remove a skill |
 | `pack add PACK` | Add a skill bundle |
-| `list --source-name NAME [--filter SUB]` | Browse skills in a source (optional id filter) |
-| `list --installed` | See what's installed |
+| `list --source-name NAME [--filter SUB]` | Browse skills (id + summary; sorted, aligned); optional id filter |
+| `list --installed` | See what's installed (same id + summary columns) |
+| `create-skill ID` | Create `./ID/SKILL.md` from template (local testing + contrib hints) |
 | `sync` | Copy skills into your project |
 | `sync --dry-run` | Preview without writing |
 | `sync --prune` | Remove skills not in manifest |

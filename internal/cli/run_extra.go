@@ -8,7 +8,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/aryaashish/agent-wizard/internal/cache"
@@ -76,13 +79,24 @@ func runListExpanded(args []string, stdout io.Writer) error {
 			}
 			refs = filtered
 		}
-		for _, r := range refs {
-			if r.SourceAlias == "" {
-				fmt.Fprintln(stdout, r.ID)
-				continue
-			}
-			fmt.Fprintf(stdout, "%s/%s\n", r.SourceAlias, r.ID)
+		buckets, err := engine.BuildBuckets(cfg, m.Sources)
+		if err != nil {
+			return err
 		}
+		var rows []listSkillRow
+		for _, r := range refs {
+			sk, err := engine.ResolveSkill(r, buckets)
+			display := r.ID
+			if r.SourceAlias != "" {
+				display = r.SourceAlias + "/" + r.ID
+			}
+			desc := "-"
+			if err == nil {
+				desc = skills.SkillSummaryLine(sk)
+			}
+			rows = append(rows, listSkillRow{id: display, summary: desc})
+		}
+		writeSkillTable(stdout, rows)
 		return nil
 	}
 
@@ -116,9 +130,112 @@ func runListExpanded(args []string, stdout io.Writer) error {
 		return err
 	}
 	found = skills.FilterSkillsByIDSubstring(found, filterNeedle)
+	sort.Slice(found, func(i, j int) bool {
+		return found[i].ID < found[j].ID
+	})
+	var rows []listSkillRow
 	for _, s := range found {
-		fmt.Fprintln(stdout, s.ID)
+		rows = append(rows, listSkillRow{id: s.ID, summary: skills.SkillSummaryLine(s)})
 	}
+	writeSkillTable(stdout, rows)
+	return nil
+}
+
+// listSkillRow is one line of `list` tabular output (id and summary from SKILL.md).
+type listSkillRow struct {
+	id      string
+	summary string
+}
+
+func writeSkillTable(stdout io.Writer, rows []listSkillRow) {
+	if len(rows) == 0 {
+		fmt.Fprintln(stdout, "No skills found for this source or filter.")
+		fmt.Fprintln(stdout, "Try:")
+		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
+		fmt.Fprintln(stdout, "  (widen --filter or fix --source PATH)")
+		fmt.Fprintln(stdout, "Create a local scaffold:")
+		fmt.Fprintln(stdout, "  agent-wizard create-skill <skill-id>")
+		return
+	}
+	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	for _, r := range rows {
+		fmt.Fprintf(w, "%s\t%s\n", r.id, r.summary)
+	}
+	_ = w.Flush()
+}
+
+const createSkillMarkdownTemplate = `# %[1]s
+
+Replace this paragraph with one or two sentences. This is the first paragraph under the title — it appears as the short summary in agent-wizard list.
+
+## When to use
+
+-
+
+## When not to use
+
+-
+
+## Inputs
+
+-
+
+## Outputs
+
+-
+
+## Steps
+
+1.
+
+## Safety
+
+-
+`
+
+var createSkillIDRegexp = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+func runCreateSkill(args []string, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: agent-wizard create-skill <skill-id>")
+	}
+	skillID := strings.TrimSpace(args[0])
+	if skillID == "." || skillID == ".." || strings.ContainsAny(skillID, `/\`) {
+		return fmt.Errorf("invalid skill id %q", skillID)
+	}
+	if !createSkillIDRegexp.MatchString(skillID) {
+		return fmt.Errorf(`skill id %q is invalid — use lowercase letters, digits, and "-" only (e.g. my-review-checklist)`, skillID)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(wd, skillID)
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("./%s already exists — remove it or choose another id", skillID)
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		return err
+	}
+	body := fmt.Sprintf(createSkillMarkdownTemplate, skillID)
+	skillPath := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(skillPath, []byte(body), 0o644); err != nil {
+		return err
+	}
+	ui := newUI(stdout)
+	ui.OK(fmt.Sprintf("created %s/SKILL.md", skillID))
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Local testing:")
+	fmt.Fprintf(stdout, "  cd %s && agent-wizard list --source . --filter %s\n", wd, skillID)
+	fmt.Fprintln(stdout, "  Or register that directory as a local source:")
+	fmt.Fprintln(stdout, "    agent-wizard sources add --name NAME --kind local --path ABS_PATH_TO_PARENT")
+	fmt.Fprintf(stdout, "    agent-wizard add %s --source NAME && agent-wizard sync\n", skillID)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "To contribute this skill to the bundled library:")
+	fmt.Fprintln(stdout, "  • Fork the agent-wizard repository")
+	fmt.Fprintf(stdout, "  • Copy this folder to: internal/community/assets/%s/\n", skillID)
+	fmt.Fprintln(stdout, "  • Open a pull request")
+	fmt.Fprintln(stdout, "  Guide: CONTRIBUTING.md — structure and quality bar.")
 	return nil
 }
 
