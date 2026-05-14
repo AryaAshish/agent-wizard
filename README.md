@@ -329,6 +329,7 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 
 ## Documentation
 
+- [Shipping test plan](docs/test-plan-ship.md)
 - [Bundled skills index](docs/SKILLS.md)
 - [Roadmap](ROADMAP.md)
 - [Launch metrics log](docs/metrics.md)
