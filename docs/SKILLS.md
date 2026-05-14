@@ -1,6 +1,6 @@
 # Bundled community skills
 
-Skills ship inside the CLI under [`internal/community/assets/`](../internal/community/assets/). Install with `agent-wizard add <id> --source community` then `agent-wizard sync`.
+Skills ship inside the CLI under [`internal/community/assets/`](../internal/community/assets/). On **v0.1.3+**, `agent-wizard add <id> --source community` creates the manifest and runs **sync** by default. On **v0.1.2** and earlier, run **`init`**, then **`add`**, then **`sync`**.
 
 | Skill id | Path | Purpose |
 |----------|------|---------|
