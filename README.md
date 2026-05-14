@@ -21,6 +21,8 @@
 
 ## Happy path (first run)
 
+**Version:** The single-command flow below needs **v0.1.3 or newer** (or any build from `main`, including `go install github.com/aryaashish/agent-wizard@main`). **v0.1.2** and older do not auto-create the manifest: run **`agent-wizard init`** once, then **`agent-wizard add pr-review --source community`** and **`agent-wizard sync`** (or upgrade). If you use **`install.sh`** or a **GitHub Release** tarball, pick the asset for **v0.1.3+** before expecting this path to work without `init`.
+
 With no manifest yet, `add` creates `agentskills.yaml`, wires the bundled **community** source, and runs **sync** (use `--no-sync` if you only want the manifest updated).
 
 ```bash
@@ -79,7 +81,9 @@ If you do not have a tap configured yet, use **curl** or **npm** instead.
 go install github.com/aryaashish/agent-wizard@latest
 ```
 
-Ensure `$HOME/go/bin` (or your `GOBIN`) is on `PATH`. Pin to a tagged release if you prefer reproducible installs (for example `@v0.1.0` once that tag exists).
+Ensure `$HOME/go/bin` (or your `GOBIN`) is on `PATH`. Pin to a tagged release if you prefer reproducible installs (for example `@v0.1.3` once that tag exists).
+
+**`go install` and `--version`:** Plain `go install` does not pass release ldflags, so **`agent-wizard --version`** may print `dev (commit=none date=unknown)`. That is expected; use a **release binary** (`install.sh`, GitHub Release asset, or npm’s downloaded binary) when you need semver + embedded build metadata.
 
 **Windows** (from source):
 
