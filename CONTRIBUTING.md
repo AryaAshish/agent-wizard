@@ -4,11 +4,39 @@ Thank you for helping improve `agent-wizard`.
 
 ## Workflow
 
-1. Discuss larger changes via an issue when behavior or schema contracts change.
-2. Prefer small commits and clear messages (optional Conventional Commits encouraged).
-3. Ensure `go test ./...` and `scripts/verify_docs.sh` pass locally.
+1. Open an issue for behavior or schema contract changes—use templates under `.github/ISSUE_TEMPLATE/` (`bug_report`, `feature_request`, `skill_request`).
+2. Prefer **small commits** with [Conventional Commits](https://www.conventionalcommits.org/) prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
+3. Ensure `go test ./...` and `bash scripts/verify_docs.sh` pass locally before pushing.
+
+Maintainers triage **best-effort ~weekly**; critical regressions jump the queue.
+
+## Adding or updating a bundled (“community”) skill
+
+Skills ship from `internal/community/assets/<skill-id>/SKILL.md` — picked up via `go:embed`. Each skill id must match its directory name.
+
+**Launch-ready checklist**
+
+1. **One workflow** per skill—no generic catch-alls.
+2. Sections: *When to use*, *When not to use*, *Inputs*, *Outputs*, *Steps*, *Safety*.
+3. At least **two** runnable shell/command blocks OR explicit `YOUR_*` placeholders with guidance.
+4. State OS/tool assumptions (e.g. Linux/macOS, Docker required).
+5. No filler prose—every paragraph should change behavior.
+
+After edits: run `go test ./...`, refresh [`docs/SKILLS.md`](docs/SKILLS.md), and if packs reference your skill update `.agent-wizard-pack.yaml`.
+
+Request ideas without a PR: open **Request a bundled skill**.
+
+## PR checklist
+
+- [ ] `go fmt ./...` on touched Go
+- [ ] `go test ./...`
+- [ ] `bash scripts/verify_docs.sh`
+- [ ] README / CHANGELOG updated when user-visible behavior changes
+- [ ] No secrets or machine-specific paths committed
 
 ## Code style
 
-- Format with `gofmt`/`go fmt`.
-- Keep CLI behavior deterministic and backwards compatible unless bumping documented schema versions.
+- Deterministic CLI behavior; backwards-compatible defaults unless bumping documented schema versions.
+- Avoid introducing alternate CLI frameworks—stay consistent with existing stdlib `flag` routing unless agreed otherwise.
+
+See also [SECURITY.md](SECURITY.md).
