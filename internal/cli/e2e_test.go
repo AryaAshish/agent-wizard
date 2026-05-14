@@ -307,6 +307,59 @@ func TestNegative_StrictLockDigestMismatchAndDriftExitCode(t *testing.T) {
 	}
 }
 
+func TestAddFromGitRepoSubdirectoryWritesManifestAtRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(root, "pkg", "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	restore := setEnvAndCwd(t, map[string]string{"HOME": home}, sub)
+	defer restore()
+
+	var out bytes.Buffer
+	if err := run([]string{"add", "pr-review", "--source", "community"}, &out); err != nil {
+		t.Fatalf("add from subdir: %v\n%s", err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "project:") {
+		t.Fatalf("expected project: line when cwd is below repo root:\n%s", s)
+	}
+	if _, err := os.Stat(filepath.Join(root, "agentskills.yaml")); err != nil {
+		t.Fatalf("agentskills.yaml should be at git root: %v", err)
+	}
+	skillPath := filepath.Join(root, ".agents", "skills", "pr-review", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Fatalf("skill should sync under git root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sub, "agentskills.yaml")); err == nil {
+		t.Fatal("agentskills.yaml should not be created under subdirectory")
+	}
+}
+
+func TestWizardInteractiveInstallDefaultSkill(t *testing.T) {
+	project := t.TempDir()
+	if err := os.Mkdir(filepath.Join(project, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	restore := setEnvAndCwd(t, map[string]string{"HOME": home}, project)
+	defer restore()
+
+	in := strings.NewReader("1\n\nn\n3\n")
+	var out bytes.Buffer
+	if err := runWizardInteractive(&out, in, false); err != nil {
+		t.Fatal(err)
+	}
+	skillPath := filepath.Join(project, ".agents", "skills", "pr-review", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Fatalf("wizard default install: %v\n%s", err, out.String())
+	}
+}
+
 func setEnvAndCwd(t *testing.T, env map[string]string, cwd string) func() {
 	t.Helper()
 	oldWd, err := os.Getwd()
