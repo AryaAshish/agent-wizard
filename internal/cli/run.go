@@ -340,7 +340,7 @@ func runSync(args []string, stdout io.Writer) error {
 	}
 	m, err := manifest.Load(wd)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w\nhint: fix agentskills.yaml YAML or run `agent-wizard init` in the project root", err)
 	}
 	cfgPath, err := config.DefaultPath()
 	if err != nil {

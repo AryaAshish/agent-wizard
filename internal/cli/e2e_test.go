@@ -41,6 +41,129 @@ func TestEndUserFlow_EmbeddedCommunity_ListFilterAddSync(t *testing.T) {
 	}
 }
 
+func TestEndUserFlow_EmbeddedCommunity_PackAddSync(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	restore := setEnvAndCwd(t, map[string]string{"HOME": home}, project)
+	defer restore()
+
+	var out bytes.Buffer
+	mustRun(t, []string{"init"}, &out)
+	out.Reset()
+	mustRun(t, []string{"pack", "add", "android-starter"}, &out)
+	out.Reset()
+	mustRun(t, []string{"sync"}, &out)
+
+	want := []string{"pr-review", "plan-review", "launch-ready", "cursor-rules-hooks", "github-actions-matrix"}
+	for _, id := range want {
+		p := filepath.Join(project, ".agents", "skills", id, "SKILL.md")
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("missing synced skill %q: %v", id, err)
+		}
+	}
+}
+
+func TestCLI_IdempotentAddSync(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	restore := setEnvAndCwd(t, map[string]string{"HOME": home}, project)
+	defer restore()
+
+	var out bytes.Buffer
+	mustRun(t, []string{"init"}, &out)
+	out.Reset()
+	mustRun(t, []string{"add", "pr-review", "--source", "community"}, &out)
+	out.Reset()
+	mustRun(t, []string{"add", "pr-review", "--source", "community"}, &out)
+	out.Reset()
+	mustRun(t, []string{"sync"}, &out)
+	out.Reset()
+	mustRun(t, []string{"sync"}, &out)
+	p := filepath.Join(project, ".agents", "skills", "pr-review", "SKILL.md")
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("skill missing after idempotent ops: %v", err)
+	}
+}
+
+func TestCLI_ErrorHints(t *testing.T) {
+	tests := []struct {
+		name          string
+		prep          func(t *testing.T, buf *bytes.Buffer)
+		args          []string
+		wantSubstring string
+	}{
+		{
+			name: "sync_unknown_skill",
+			prep: func(t *testing.T, buf *bytes.Buffer) {
+				mustRun(t, []string{"init"}, buf)
+				buf.Reset()
+				mustRun(t, []string{"add", "definitely-nonexistent-skill-xyz", "--source", "community"}, buf)
+			},
+			args:          []string{"sync"},
+			wantSubstring: "hint:",
+		},
+		{
+			name: "sync_corrupt_manifest_yaml",
+			prep: func(t *testing.T, buf *bytes.Buffer) {
+				mustRun(t, []string{"init"}, buf)
+				writeFile(t, filepath.Join(mustDetectWd(t), "agentskills.yaml"), "not: yaml: [[[ broken")
+			},
+			args:          []string{"sync"},
+			wantSubstring: "hint:",
+		},
+		{
+			name: "sync_unknown_manifest_source_second_in_list",
+			prep: func(t *testing.T, buf *bytes.Buffer) {
+				mustRun(t, []string{"init"}, buf)
+				wd := mustDetectWd(t)
+				raw := readFile(t, filepath.Join(wd, "agentskills.yaml"))
+				updated := strings.Replace(raw, "sources:\n    - community", "sources:\n    - community\n    - no-such-registry-zzz", 1)
+				if updated == raw {
+					t.Fatalf("could not inject unknown source — got:\n%s", raw)
+				}
+				writeFile(t, filepath.Join(wd, "agentskills.yaml"), updated)
+			},
+			args:          []string{"sync"},
+			wantSubstring: "hint:",
+		},
+		{
+			name:          "add_without_manifest",
+			prep:          func(t *testing.T, buf *bytes.Buffer) {}, // cwd is empty temp project — no agentskills.yaml
+			args:          []string{"add", "pr-review", "--source", "community"},
+			wantSubstring: "hint:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			project := t.TempDir()
+			home := t.TempDir()
+			restore := setEnvAndCwd(t, map[string]string{"HOME": home}, project)
+			defer restore()
+			var setup bytes.Buffer
+			tt.prep(t, &setup)
+			setup.Reset()
+			err := run(tt.args, &setup)
+			if err == nil {
+				t.Fatalf("expected error, got nil; out=%q", setup.String())
+			}
+			msg := err.Error()
+			if tt.wantSubstring != "" && !strings.Contains(msg, tt.wantSubstring) {
+				t.Fatalf("error %q missing %q", msg, tt.wantSubstring)
+			}
+		})
+	}
+}
+
+func mustDetectWd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	return wd
+}
+
 func TestEndUserFlow_LocalSource_Pack_Lock_Sync_StatusJSON(t *testing.T) {
 	project := t.TempDir()
 	home := t.TempDir()

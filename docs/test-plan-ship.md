@@ -1,196 +1,112 @@
-# Shipping test plan (agent-wizard)
+# Shipping test plan — phased execution
 
-Goal: **Production-grade confidence** on the paths users hit daily—happy path, release binary, **failures**, **idempotency**, and **clean-environment** runs—without new CI systems (extend `go test`, existing scripts, optional one-shot Docker).
+**Goal:** High confidence before public releases—**not** exhaustive coverage of every host, but **no known critical path untested** plus **explicit pre-tag gates** (failure, idempotency, clean replay).
 
 ## Principles
 
-1. Run phases **in order**; later phases assume earlier ones passed.
-2. **Tag blocker:** P4 + **P6 canonical gate** + green-to-ship footer must pass for the **same commit** as the tag.
-3. Prefer **hermetic tests** (`t.TempDir`, temp `HOME`); avoid relying on the maintainer’s laptop cache.
+1. **Critical path first:** install → init → discover → add/sync → second project → team sources → lock.
+2. **Automate what’s stable:** `go test`, `scripts/*.sh`; avoid flaky network on every PR where possible.
+3. **Separate release rehearsal:** curling npm / human demo optional on schedule, **mandatory before tag**.
+4. **Evidence on tag:** Maintainer records SHA + date in release PR or [`docs/metrics.md`](./metrics.md).
 
 ---
 
-## Phase overview
+## Execution order & dependencies
 
-| Phase | What | Pass |
-|-------|------|------|
-| **P0** | Zero-state / cache hygiene | Commands exit 0 |
-| **P1** | Unit + integration (`go test`) | Exit 0 |
-| **P2** | Docs + coverage scripts | Exit 0 |
-| **P3** | Vulnerability scan | Exit 0 (or documented waiver) |
-| **P4** | Release-binary smoke + **idempotency** | `smoke.sh` + repeat commands OK |
-| **P5** | Embedded community E2E (`go test`) | Matching tests pass |
-| **P5.1** | **Failure & error UX** | Assertions below |
-| **P6** | **Manual gate** (install paths, team git, security) + **canonical demo blocks tag** | Checklist complete |
+| Phase | Depends on | Typical runner |
+|-------|-------------|----------------|
+| P0 | — | Contributor / CI |
+| P1–P3 | P0 locally | CI + local |
+| P4 | P1–P3 | CI (`distribution-dry-run`) |
+| P5–P5.2 | P0 (`go test` temp dirs imply clean HOME) | CI |
+| P6.* | Automated green on candidate SHA | Maintainer |
+| P7 | — | Nightly OK |
 
----
-
-## P0 — Zero-state and repeatability prep
-
-**Why:** Hidden `HOME` config, stale `go test` cache, or leftover `agentskills.yaml` in the repo root can make “green locally” a false positive.
-
-**Run (pick all that apply before P1–P4 locally):**
-
-```bash
-go clean -testcache
-# Ensure no accidental manifest in repo root used by verify_docs:
-test ! -f agentskills.yaml || echo "WARN: agentskills.yaml in repo root may affect verify_docs"
-```
-
-**CI:** Already uses clean checkouts—no extra step.
-
-**Optional clean shell (no hidden local deps):** from repo root, one-shot:
-
-```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.22-bookworm bash -lc \
-  'apt-get update -qq && apt-get install -y -qq git ca-certificates >/dev/null && go test ./... -count=1'
-```
-
-Use this when validating a release candidate if your host has exotic env vars or global git hooks (Docker needs network once for module download).
+Docs-only PRs may skip **P4** locally; **shipping a tag still requires P4 + P6.3 + P6.4** below.
 
 ---
 
-## P1 — Go tests
+## Phase map
 
-```bash
-go test ./... -count=1
-```
+| Phase | Objective | Run | Pass gate |
+|-------|-----------|-----|-----------|
+| **P0 — Zero-state** | No stale `HOME` / cache masking bugs | Prefer fresh temp dirs (`mktemp -d`). For interactive repeats: unset or point `HOME` to a disposable dir; **`agent-wizard cache prune`** if you reused the same HOME | Doc’d env knobs: `HOME`, `INSTALL_DIR`, `PATH`, optional `AGENT_WIZARD_CACHE_DIR` reset |
+| **P1 — Unit + integration** | Full Go suite | From repo root: `go test ./... -count=1` | Exit **0** |
+| **P2 — Docs + coverage** | Matches CI helpers | `bash scripts/verify_docs.sh` && `bash scripts/check_coverage.sh` | Both exit **0** |
+| **P3 — Vuln baseline** | Dependency scan | `govulncheck ./...` (or rely on [.github/workflows/ci.yml](../.github/workflows/ci.yml)) | Exit **0** or waiver in release notes |
+| **P4 — Release-binary smoke** | Tarball + `install.sh` + npm shim + CLI | `bash scripts/distribution/smoke.sh` (optional `VERSION=vX.Y.Z-rc`) | **`distribution smoke passed`** |
+| **P5 — Hermetic E2E** | Embedded `community` in `go test` | `go test ./internal/cli/... -count=1 -run 'TestEndUserFlow_'` | Exit **0** |
+| **P5.1 — Failure + hints** | Bad skill/manifest/source UX | Implemented as `TestCLI_ErrorHints` in [`internal/cli/e2e_test.go`](../internal/cli/e2e_test.go): unknown skill sync, malformed YAML manifest, unresolved manifest source alongside `community` | Each case: **non‑zero exit** and error text contains **`hint:`** (preferred) or unambiguous actionable substring |
+| **P5.2 — Idempotency** | Repeated `add` / `sync` | `TestCLI_IdempotentAddSync` + **`smoke.sh` runs `sync` twice** | Second `sync` exits **0**; first skill tree still valid |
+| **P6 — Manual pre-tagrollup** | See subsections below | Checklists | Boxes + sign-off |
 
-**Pass:** exit 0 on ubuntu + macos (+ windows if you ship Windows support).
+### Optional **P7 — Perf / fuzz**
 
----
-
-## P2 — Docs + coverage
-
-```bash
-bash scripts/verify_docs.sh
-bash scripts/check_coverage.sh
-```
-
-**Pass:** exit 0.
-
----
-
-## P3 — govulncheck
-
-```bash
-govulncheck ./...
-```
-
-**Pass:** exit 0, or CI-equivalent job green.
+`bash scripts/perf_smoke.sh` (CI nightly). Fuzz/golden snapshots: defer until justified.
 
 ---
 
-## P4 — Release binary smoke + idempotency
+## P6 Manual gates (maintainer checklist)
 
-**Smoke (real install shape):**
+Complete before **tag**. Record **git SHA + date**.
 
-```bash
-bash scripts/distribution/smoke.sh
-```
+### P6.1 Install paths (real installs)
 
-**Pass:** ends with `distribution smoke passed` (release tarball + `install.sh` + npm wrapper + **init → list --filter → add → sync**).
+- [ ] **curl \| sh** README path: binary on `PATH`, `agent-wizard --version` matches tag.
+- [ ] **npm** `npx @aryaashish/agent-wizard --version` (Node 18+).
+- [ ] (Optional) `go install github.com/aryaashish/agent-wizard@vX.Y.Z`.
 
-**Idempotency (same project dir, no errors on repeat):** after `smoke.sh` succeeds, re-use its temp project is awkward because the script deletes it—instead run **manually** in a fresh dir (copy-paste):
+### P6.2 Team / git skill library
 
-```bash
-proj="$(mktemp -d)" home="$(mktemp -d)"
-export HOME="$home" PATH="$HOME/go/bin:$PATH"  # adjust if install dir differs
-cd "$proj" && git init -q
-agent-wizard init </dev/null
-agent-wizard add pr-review --source community
-agent-wizard sync
-agent-wizard add pr-review --source community   # second add: no-op / stable
-agent-wizard sync
-agent-wizard sync                               # second sync: stable
-test -f .agents/skills/pr-review/SKILL.md
-```
+- [ ] Temporary git repo (`file://…` or test org) with ≥1 skill.
+- [ ] `sources add --kind git`; manifest lists that source.
+- [ ] `list --source-name <name>` → `add … --source <name>` → `sync`.
 
-**Pass:** second `add` / `sync` do not corrupt tree; `SKILL.md` still present.
+### **P6.3 Canonical demo gate (blocks tag)**
 
-**Backlog (optional):** fold the idempotency block into `scripts/distribution/smoke.sh` so CI enforces it every run.
+- [ ] Repo **A:** follow README “Happy path” fenced block end-to-end (non-interactive `init` acceptable).
+- [ ] Repo **B:** repeat in a fresh directory — same commands, synced `SKILL.md` appears.
+- [ ] **Do not tag** if P6.3 cannot be completed **the same calendar day** as the candidate SHA (fix or postpone release).
 
----
+Depends on successful **P4** for that toolchain **or** the exact `go install` / tarball used in production README.
 
-## P5 — Embedded community E2E (hermetic)
+### P6.4 Clean environment replay
 
-```bash
-go test ./internal/cli/... -count=1 -run 'TestEndUserFlow_EmbeddedCommunity'
-```
+Run **either**:
 
-**Pass:** all tests matching the run pass.
+- **`docker run` one-shot** — mount repo, install minimal deps (**bash**, **nodejs** for npm block in smoke), execute `scripts/distribution/smoke.sh`; **or**
+- Equivalent **fresh VM** / teammate laptop with no prior `agent-wizard` install.
 
-**Backlog:** add `TestEndUserFlow_EmbeddedCommunity_PackAddSync` (`pack add android-starter` + `sync` + assert pack skills on disk).
+Proves artifacts do not rely on hidden local state beyond documented inputs.
 
----
+Frequency: at minimum before **first GA of a minor** / after materializing install changes.
 
-## P5.1 — Failure scenarios and error messages
+### P6.5 Security & leakage
 
-Automated today (run every PR):
-
-```bash
-go test ./internal/cli/... -count=1 -run 'TestNegative_'
-```
-
-Covers **ambiguous skill** across sources and **strict-lock / drift** failure paths.
-
-**Manual spot-checks before tag** (script until covered by tests—each must show a **clear error** and, where implemented, a **hint** such as `Try:` or `agent-wizard init`):
-
-| Scenario | Suggested repro | Expect |
-|----------|-----------------|--------|
-| **Invalid / unknown skill id** | `add does-not-exist --source community` then `sync` | `sync` fails resolving skill; stderr/stdout mentions missing skill or similar (no silent success) |
-| **Broken manifest** | Temp project: corrupt `agentskills.yaml` to invalid YAML, run `sync` | Non-zero exit; message points at manifest/config, not stack-only |
-| **Missing / wrong source** | Manifest lists `sources: [community]` but global config has no such source (fresh `HOME` + hand-edited manifest) or `list --source-name nope` | Clear “source not found” style message |
-| **add without manifest** | Empty dir, no `init`, run `add` | Hint path per current CLI (`init` guidance) |
-
-**Pass:** each row behaves as expected; if output regresses, **block tag** until fixed or doc updated with known limitation.
+- [ ] Skim [Threat model](./security/threat-model.md) vs current CLI/network behavior.
+- [ ] Confirm no credential files committed (`.gitignore` + upstream secret scanning).
 
 ---
 
-## P6 — Manual gate + canonical demo (blocks tag)
+## Automated regression inventory
 
-Complete **once per release SHA**; paste evidence (checkboxes + date + commit) in the release PR or [`docs/metrics.md`](metrics.md).
-
-### P6.0 — Canonical demo (required)
-
-Same as launch plan: **Repo A** full path, **Repo B** repeat with identical commands; non-interactive `init` OK.
-
-**Pass:** `pr-review` (or chosen demo skill) on disk in both trees within the timing bar you use for demos.
-
-**Rule:** If P6.0 fails, **do not tag**—fix or document a known blocker explicitly.
-
-### P6.1 — Install surfaces
-
-- [ ] curl + `install.sh` → `agent-wizard --version` matches tag
-- [ ] npm `npx` or global install path (optional but recommended once per major)
-
-### P6.2 — Team git library
-
-- [ ] `sources add --kind git` against `file://` or real test repo; `list` / `add` / `sync`
-
-### P6.3 — Security
-
-- [ ] Skim [`docs/security/threat-model.md`](security/threat-model.md); `git grep` for obvious secret patterns before tag
+| Automated | Covers |
+|-----------|--------|
+| `TestEndUserFlow_EmbeddedCommunity_ListFilterAddSync`, `PackAddSync` | Embedded community listing, single skill, **pack bundle** (`android-starter` five skills) |
+| `TestCLI_ErrorHints`, `TestCLI_IdempotentAddSync` | **P5.1 / P5.2**: missing manifest on `add`, malformed manifest YAML on `sync`, unknown skill sync, bogus second manifest source alongside `community`, duplicate add + double `sync` |
+| `bash scripts/distribution/smoke.sh` (two `sync` calls) | **P4 / idempotency** on released-style binary |
 
 ---
 
-## Green to ship (summary)
+## Green to ship
 
-1. **P0–P5 + P5.1** green on the tag commit (CI + any manual rows in P5.1).
-2. **P4** `smoke.sh` green on that commit.
-3. **P6** checklist done; **P6.0 canonical demo** explicitly signed off.
-4. Second reviewer runs README happy path on that tag (not the author).
-
----
-
-## Optional (Tier D / backlog)
-
-- Golden CLI snapshots, fuzz YAML, load `sync`—defer until pain appears.
-- Encode P5.1 manual rows as `go test` cases when stable.
-- `workflow_dispatch` job that echoes P0–P4 commands for maintainers (no new infra—reuse scripts only).
+1. **P1–P3 + P4 + P5 + P5.1 + P5.2** pass on **the tag commit** on **ubuntu-latest** (+ **windows-latest**/**macos-latest** via CI matrix).
+2. **P6.3** + **P6.4** completed and noted (SHA/date).
+3. **Second reviewer** re-runs README happy path (no substitutions).
+4. **CHANGELOG** entry for the version.
 
 ---
 
-## What “100% sure” means here
+## What “production-grade confidence” means
 
-All **documented real-world classes** (happy, release, **failure**, **repeat**, **clean**) are either **automated** or **explicitly run and signed off** before the tag. Residual risk is unknown host quirks—address with patch releases and issue templates.
+We ship when automated paths (P1–P5.2), release-shaped binary smoke (P4), and explicit human gates (P6—including **failure UX**, **repeatability**, and **canonical demo**) are satisfied—not when every possible OS/agent combination has been tried. Patch releases absorb residual edge cases.

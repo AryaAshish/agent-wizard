@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Ten bundled community skills with structured playbooks + [`docs/SKILLS.md`](docs/SKILLS.md).
 - CLI: `list --filter`, tighter `init` next steps, actionable `sync`/`add` hints when manifests break.
 - Contributor ergonomics: `.env.example`, expanded `.gitignore`, issue templates, ROADMAP, `docs/show-hn.md`, `docs/metrics.md`.
+- Shipping: phased [`docs/test-plan-ship.md`](docs/test-plan-ship.md); e2e for embedded pack sync, CLI error hints, idempotent sync; malformed-manifest hint on `sync`; distribution smoke runs `sync` twice.
 
 ## [v0.1.2]
 

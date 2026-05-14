@@ -53,6 +53,7 @@ tar -xzf "$DIST_DIR/$asset" -C "$AGENT_WIZARD_CACHE_DIR/v${VERSION#v}"
   "$HOME_DIR/bin/agent-wizard" list --source-name community --filter pr-review | grep -q pr-review
   "$HOME_DIR/bin/agent-wizard" add pr-review --source community
   "$HOME_DIR/bin/agent-wizard" sync
+  "$HOME_DIR/bin/agent-wizard" sync
   test -f .agents/skills/pr-review/SKILL.md
 )
 
