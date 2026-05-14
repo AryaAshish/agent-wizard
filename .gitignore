@@ -2,6 +2,10 @@
 dist/
 *.log
 
+# Local CI / dev artifacts (never commit)
+.artifacts/
+coverage.out
+
 # Secrets and local env (never commit)
 .env
 .env.*
