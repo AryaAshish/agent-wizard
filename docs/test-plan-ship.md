@@ -36,7 +36,7 @@ Run on **linux + macOS** at minimum (Windows for paths and git behavior where di
 | Coverage floor | `bash scripts/check_coverage.sh` | CI |
 | Docs contract | `bash scripts/verify_docs.sh` | CI |
 | Vuln scan | `govulncheck ./...` | CI (already) |
-| **Distribution smoke** | `bash scripts/distribution/smoke.sh` (if present; extend) | CI or `workflow_dispatch` |
+| **Distribution smoke** | `bash scripts/distribution/smoke.sh` — builds release tarball, runs `install.sh`, npm wrapper `--version`, then **init → list --filter → add pr-review → sync** on real binary | CI `distribution-dry-run` job |
 | Perf smoke | `bash scripts/perf_smoke.sh` | CI nightly OK |
 
 **Gap:** Ensure `distribution/smoke.sh` exercises **released binary** or **go install** path matching README—not only `go run .`.
