@@ -28,6 +28,11 @@ type Config struct {
 }
 
 func DefaultPath() (string, error) {
+	// Tests set HOME for an isolated config dir. On Windows, os.UserHomeDir()
+	// ignores HOME (it uses USERPROFILE), so prefer HOME when set.
+	if h := os.Getenv("HOME"); h != "" {
+		return filepath.Join(h, FileName), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
