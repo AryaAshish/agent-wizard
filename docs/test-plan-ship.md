@@ -1,113 +1,196 @@
 # Shipping test plan (agent-wizard)
 
-Goal: **high confidence** before public releases—not “100%” in the mathematical sense (impossible for all hosts and future agents), but **no known critical path untested** and **CI + manual gates** documented.
+Goal: **Production-grade confidence** on the paths users hit daily—happy path, release binary, **failures**, **idempotency**, and **clean-environment** runs—without new CI systems (extend `go test`, existing scripts, optional one-shot Docker).
 
 ## Principles
 
-1. **Critical path first:** install → init → discover → add/sync → second project → lock (teams).
-2. **Automate what is stable:** `go test`, scripts without network where possible.
-3. **Quarantine flakiness:** network/curl/npm/real GitHub in **nightly** or **pre-tag** jobs, not necessarily every PR if flaky.
-4. **Evidence on tag:** maintainer runs **release rehearsal** once per minor/major and pastes checklist into release notes or internal log.
+1. Run phases **in order**; later phases assume earlier ones passed.
+2. **Tag blocker:** P4 + **P6 canonical gate** + green-to-ship footer must pass for the **same commit** as the tag.
+3. Prefer **hermetic tests** (`t.TempDir`, temp `HOME`); avoid relying on the maintainer’s laptop cache.
 
 ---
 
-## Tier A — Must pass on every PR (`go test ./...`)
+## Phase overview
 
-| Area | Today | Gap to close |
-|------|--------|----------------|
-| Pure helpers | `internal/skills`, `internal/model`, `internal/engine` helpers | Keep table-driven tests when adding logic |
-| CLI smoke | `internal/cli/run_test.go` | Expand only with stable assertions |
-| **Embedded community** | `TestEndUserFlow_EmbeddedCommunity_ListFilterAddSync` | Add sibling: `pack add android-starter` + `sync` + assert 5 skill dirs |
-| Local library + pack + lock | `TestEndUserFlow_LocalSource_Pack_Lock_Sync_StatusJSON` | Keep in sync when pack schema changes |
-| Ambiguity / strict-lock | `TestNegative_*` in `e2e_test.go` | Add one test per new resolution rule |
-| Community legacy config | `TestInitMigratesLegacyCommunityGitInGlobalConfig` | Extend if migration rules grow |
-
-**Action:** Add **`TestEndUserFlow_EmbeddedCommunity_PackAddSync`** (init → `pack add android-starter` → `sync` → assert expected skill dirs from pack YAML).
-
----
-
-## Tier B — Must pass before tagging a release (automated locally / CI job)
-
-Run on **linux + macOS** at minimum (Windows for paths and git behavior where different).
-
-| Check | Command / script | Owner |
-|-------|------------------|--------|
-| Full unit + integration | `go test ./... -count=1` | CI |
-| Coverage floor | `bash scripts/check_coverage.sh` | CI |
-| Docs contract | `bash scripts/verify_docs.sh` | CI |
-| Vuln scan | `govulncheck ./...` | CI (already) |
-| **Distribution smoke** | `bash scripts/distribution/smoke.sh` — builds release tarball, runs `install.sh`, npm wrapper `--version`, then **init → list --filter → add pr-review → sync** on real binary | CI `distribution-dry-run` job |
-| Perf smoke | `bash scripts/perf_smoke.sh` | CI nightly OK |
-
-**Gap:** Ensure `distribution/smoke.sh` exercises **released binary** or **go install** path matching README—not only `go run .`.
+| Phase | What | Pass |
+|-------|------|------|
+| **P0** | Zero-state / cache hygiene | Commands exit 0 |
+| **P1** | Unit + integration (`go test`) | Exit 0 |
+| **P2** | Docs + coverage scripts | Exit 0 |
+| **P3** | Vulnerability scan | Exit 0 (or documented waiver) |
+| **P4** | Release-binary smoke + **idempotency** | `smoke.sh` + repeat commands OK |
+| **P5** | Embedded community E2E (`go test`) | Matching tests pass |
+| **P5.1** | **Failure & error UX** | Assertions below |
+| **P6** | **Manual gate** (install paths, team git, security) + **canonical demo blocks tag** | Checklist complete |
 
 ---
 
-## Tier C — Manual / pre-ship rehearsal (checklist)
+## P0 — Zero-state and repeatability prep
 
-Do once per **release candidate** (RC tag or `main` freeze before tag). Record date + git SHA in `docs/metrics.md` or release notes.
+**Why:** Hidden `HOME` config, stale `go test` cache, or leftover `agentskills.yaml` in the repo root can make “green locally” a false positive.
 
-### C1 — Install paths (real world)
+**Run (pick all that apply before P1–P4 locally):**
 
-- [ ] **curl + install.sh** on clean shell (macOS or Linux): binary on `PATH`, `agent-wizard --version` matches expected tag.
-- [ ] **npm** `npx @aryaashish/agent-wizard --version` (or global install) on machine with Node 18+.
-- [ ] **go install** `github.com/aryaashish/agent-wizard@vX.Y.Z` from clean module cache optional.
+```bash
+go clean -testcache
+# Ensure no accidental manifest in repo root used by verify_docs:
+test ! -f agentskills.yaml || echo "WARN: agentskills.yaml in repo root may affect verify_docs"
+```
 
-### C2 — Canonical demo (launch plan)
+**CI:** Already uses clean checkouts—no extra step.
 
-- [ ] Repo A: non-interactive `init` → `list --source-name community --filter pr` → `add pr-review --source community` → `sync` → open `SKILL.md`.
-- [ ] Repo B: repeat; confirm **no** manual re-copy from external doc.
-- [ ] Optional: interactive `init` + picker path once (human).
+**Optional clean shell (no hidden local deps):** from repo root, one-shot:
 
-### C3 — Team / git source (sharing)
+```bash
+docker run --rm -v "$PWD":/src -w /src golang:1.22-bookworm bash -lc \
+  'apt-get update -qq && apt-get install -y -qq git ca-certificates >/dev/null && go test ./... -count=1'
+```
 
-- [ ] Create temp **bare** or regular git repo with 1–2 skills + optional pack on `file://` or private test org.
-- [ ] `sources add --name team --kind git --git-url …`
-- [ ] `agentskills.yaml` lists `team` in `sources` (or use `sources` + manifest edit as today).
-- [ ] `list --source-name team`, `add … --source team`, `sync` — files present.
-
-### C4 — Failure UX
-
-- [ ] `sync` with bad skill id → error + **hint** still readable.
-- [ ] `add` without manifest → hint mentions `init`.
-- [ ] Offline or blocked cache: behavior acceptable (clear message).
-
-### C5 — Security posture
-
-- [ ] Skim `docs/security/threat-model.md` vs current CLI (no new network calls without doc).
-- [ ] Confirm **no** secrets in repo: `.gitignore` + secret scan (GitHub secret scanning / `git grep` for keys).
+Use this when validating a release candidate if your host has exotic env vars or global git hooks (Docker needs network once for module download).
 
 ---
 
-## Tier D — Optional hardening (post v0.1 or if time)
+## P1 — Go tests
 
-| Item | Why optional |
-|------|----------------|
-| Golden CLI output snapshots | Brittle on Windows paths / ordering |
-| Fuzz on YAML parsers | Diminishing returns vs manifest size |
-| Matrix: old Go patch | Policy: support only documented Go version |
-| Load test `sync` huge tree | Until users report scale |
+```bash
+go test ./... -count=1
+```
 
----
-
-## Definition of “green to ship”
-
-1. **Tier A** green on **ubuntu + macos** (and **windows** if project commits to Windows support—already in CI matrix).
-2. **Tier B** green for the same commit as the tag.
-3. **Tier C** checklist completed for that tag (can be same day as tag; document in release PR).
-4. **CHANGELOG** + **README** happy path re-run by someone who did **not** write the release (second pair of eyes).
+**Pass:** exit 0 on ubuntu + macos (+ windows if you ship Windows support).
 
 ---
 
-## Implementation order (suggested)
+## P2 — Docs + coverage
 
-1. **Add** `TestEndUserFlow_EmbeddedCommunity_PackAddSync` (highest ROI, still hermetic).
-2. **Extend** `scripts/distribution/smoke.sh` (or add `scripts/e2e_install_smoke.sh`) to: build release binary with ldflags → run Tier A subset against binary.
-3. **Add** GitHub **workflow_dispatch** workflow “Release rehearsal” calling install smoke + Tier C checklist job (markdown summary artifact).
-4. **Document** in `CONTRIBUTING.md` PR section: “Release PRs must link completed Tier C checklist.”
+```bash
+bash scripts/verify_docs.sh
+bash scripts/check_coverage.sh
+```
+
+**Pass:** exit 0.
+
+---
+
+## P3 — govulncheck
+
+```bash
+govulncheck ./...
+```
+
+**Pass:** exit 0, or CI-equivalent job green.
+
+---
+
+## P4 — Release binary smoke + idempotency
+
+**Smoke (real install shape):**
+
+```bash
+bash scripts/distribution/smoke.sh
+```
+
+**Pass:** ends with `distribution smoke passed` (release tarball + `install.sh` + npm wrapper + **init → list --filter → add → sync**).
+
+**Idempotency (same project dir, no errors on repeat):** after `smoke.sh` succeeds, re-use its temp project is awkward because the script deletes it—instead run **manually** in a fresh dir (copy-paste):
+
+```bash
+proj="$(mktemp -d)" home="$(mktemp -d)"
+export HOME="$home" PATH="$HOME/go/bin:$PATH"  # adjust if install dir differs
+cd "$proj" && git init -q
+agent-wizard init </dev/null
+agent-wizard add pr-review --source community
+agent-wizard sync
+agent-wizard add pr-review --source community   # second add: no-op / stable
+agent-wizard sync
+agent-wizard sync                               # second sync: stable
+test -f .agents/skills/pr-review/SKILL.md
+```
+
+**Pass:** second `add` / `sync` do not corrupt tree; `SKILL.md` still present.
+
+**Backlog (optional):** fold the idempotency block into `scripts/distribution/smoke.sh` so CI enforces it every run.
+
+---
+
+## P5 — Embedded community E2E (hermetic)
+
+```bash
+go test ./internal/cli/... -count=1 -run 'TestEndUserFlow_EmbeddedCommunity'
+```
+
+**Pass:** all tests matching the run pass.
+
+**Backlog:** add `TestEndUserFlow_EmbeddedCommunity_PackAddSync` (`pack add android-starter` + `sync` + assert pack skills on disk).
+
+---
+
+## P5.1 — Failure scenarios and error messages
+
+Automated today (run every PR):
+
+```bash
+go test ./internal/cli/... -count=1 -run 'TestNegative_'
+```
+
+Covers **ambiguous skill** across sources and **strict-lock / drift** failure paths.
+
+**Manual spot-checks before tag** (script until covered by tests—each must show a **clear error** and, where implemented, a **hint** such as `Try:` or `agent-wizard init`):
+
+| Scenario | Suggested repro | Expect |
+|----------|-----------------|--------|
+| **Invalid / unknown skill id** | `add does-not-exist --source community` then `sync` | `sync` fails resolving skill; stderr/stdout mentions missing skill or similar (no silent success) |
+| **Broken manifest** | Temp project: corrupt `agentskills.yaml` to invalid YAML, run `sync` | Non-zero exit; message points at manifest/config, not stack-only |
+| **Missing / wrong source** | Manifest lists `sources: [community]` but global config has no such source (fresh `HOME` + hand-edited manifest) or `list --source-name nope` | Clear “source not found” style message |
+| **add without manifest** | Empty dir, no `init`, run `add` | Hint path per current CLI (`init` guidance) |
+
+**Pass:** each row behaves as expected; if output regresses, **block tag** until fixed or doc updated with known limitation.
+
+---
+
+## P6 — Manual gate + canonical demo (blocks tag)
+
+Complete **once per release SHA**; paste evidence (checkboxes + date + commit) in the release PR or [`docs/metrics.md`](metrics.md).
+
+### P6.0 — Canonical demo (required)
+
+Same as launch plan: **Repo A** full path, **Repo B** repeat with identical commands; non-interactive `init` OK.
+
+**Pass:** `pr-review` (or chosen demo skill) on disk in both trees within the timing bar you use for demos.
+
+**Rule:** If P6.0 fails, **do not tag**—fix or document a known blocker explicitly.
+
+### P6.1 — Install surfaces
+
+- [ ] curl + `install.sh` → `agent-wizard --version` matches tag
+- [ ] npm `npx` or global install path (optional but recommended once per major)
+
+### P6.2 — Team git library
+
+- [ ] `sources add --kind git` against `file://` or real test repo; `list` / `add` / `sync`
+
+### P6.3 — Security
+
+- [ ] Skim [`docs/security/threat-model.md`](security/threat-model.md); `git grep` for obvious secret patterns before tag
+
+---
+
+## Green to ship (summary)
+
+1. **P0–P5 + P5.1** green on the tag commit (CI + any manual rows in P5.1).
+2. **P4** `smoke.sh` green on that commit.
+3. **P6** checklist done; **P6.0 canonical demo** explicitly signed off.
+4. Second reviewer runs README happy path on that tag (not the author).
+
+---
+
+## Optional (Tier D / backlog)
+
+- Golden CLI snapshots, fuzz YAML, load `sync`—defer until pain appears.
+- Encode P5.1 manual rows as `go test` cases when stable.
+- `workflow_dispatch` job that echoes P0–P4 commands for maintainers (no new infra—reuse scripts only).
 
 ---
 
 ## What “100% sure” means here
 
-We ship when **known critical flows** are **automated** and **release-specific risks** are **explicitly signed off**—not when every theoretical host configuration has been tried. Unknowns after that are handled by **patch releases**, issue templates, and rollback docs.
+All **documented real-world classes** (happy, release, **failure**, **repeat**, **clean**) are either **automated** or **explicitly run and signed off** before the tag. Residual risk is unknown host quirks—address with patch releases and issue templates.
