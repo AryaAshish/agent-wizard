@@ -1,54 +1,75 @@
 # Technical plan review
 
-Turn a written plan (RFC, tech spec, ticket epic) into **decisions**, **dependencies**, **cut-lines**, and **testable milestones**—before coding spreads across branches.
+Turn a written plan into **decisions**, **dependencies**, **cut-lines**, and **testable milestones** before coding spreads.
 
 ## When to use
 
-- A multi-week initiative needs alignment across backend, frontend, infra, or data.
-- You’re about to fork repos or schema—the cost of fixing direction later is high.
+- Multi-surface initiative (backend, frontend, infra, data).
+- Schema or cross-repo fork risk.
 
 ## When not to use
 
-- Single-file bugfixes with obvious scope—ship with a normal PR description instead.
+- Single-file bugfix with obvious scope.
 
 ## Inputs
 
-- Plan doc link or pasted outline.
-- Fixed ship date vs flexible scope (say which wins).
-- Known constraints: compliance, offline clients, SLA, migration downtime budget.
+- `YOUR_REPO_ROOT` (for migration discovery commands).
+- `YOUR_PLAN_PATH` or pasted outline.
+- `YOUR_SCOPE_WINNER`: fixed_date | flexible_scope (pick one).
+- Constraints: compliance, offline, SLA, migration downtime budget (bullets).
 
 ## Outputs
 
-- **Approved scope** vs deferred backlog references (IDs).
-- Risks with owners and mitigations—not a laundry list without owners.
-- **Definition of done** that QA can execute without interpreting intent.
+```
+APPROVED_SCOPE:
+- bullet
+
+DEFERRED:
+- id or description | reason
+
+DEPENDENCIES:
+- system or team | blocking yes/no
+
+RISKS:
+- risk | owner | mitigation
+
+CUT_LINES:
+- milestone | minimum proof
+
+DEFINITION_OF_DONE:
+- QA-executable bullet list
+
+GAPS:
+- bullet or "- none -"
+```
 
 ## Steps
 
-1. Extract goals vs non-goals; reject passive voice hiding accountability (“will be handled”)—assign noun.
+1. Goals vs non-goals; replace passive “will be handled” with owner nouns.
 
 ```bash
-# Optional: sanity-check referenced tickets exist (adapt prefix)
-grep -Eo '[A-Z]+-[0-9]+' YOUR_PLAN.md | sort -u
+test -f YOUR_PLAN_PATH && grep -Eo '[A-Z]+-[0-9]+' YOUR_PLAN_PATH | sort -u || printf '%s\n' "No YOUR_PLAN_PATH"
 ```
 
-2. Dataflow diagram in prose: inputs → systems → persistence → outputs; note sync/async boundaries.
+2. Dataflow prose: inputs → systems → persistence → outputs; mark sync vs async.
 
-3. Migration / rollout ordering: backwards-compatible phases; expand **rollback** for each phase.
+3. Migrations / rollout phases + rollback per phase.
 
 ```bash
-# If migrations live in-repo
-find . -path '*migration*' -name '*.sql' 2>/dev/null | head
+find YOUR_REPO_ROOT -path '*migration*' -name '*.sql' 2>/dev/null | head -n 30
 ```
 
-4. Test strategy: unit vs integration vs contract; what breaks first if wrong.
+4. Test strategy: what fails first if wrong (unit vs integration vs contract).
 
-5. Schedule cut-lines: minimum viable slice that proves riskiest assumption—often integration or perf—not CRUD polish.
+## Stop and ask
+
+Stop if neither `YOUR_PLAN_PATH` nor a pasted plan body was provided.
+
+## Reject if
+
+- Any `RISKS` row lacks `owner` or `mitigation`.
+- `DEFINITION_OF_DONE` contains subjective adjectives without observable checks.
 
 ## Safety
 
-- Plans that widen blast radius (multi-region, kernel flags, deleting data) require explicit downtime/RPO/RTO language—flag gaps instead of guessing.
-
-## References
-
-- Prefer linking existing ADRs over rewriting history—note superseded decisions explicitly.
+- Flag missing RPO/RTO/downtime language for high blast-radius plans; do not invent numbers.

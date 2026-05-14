@@ -15,6 +15,16 @@ Maintainers triage **best-effort ~weekly**; critical regressions jump the queue.
 
 Skills ship from `internal/community/assets/<skill-id>/SKILL.md` — picked up via `go:embed`. Each skill id must match its directory name.
 
+### Scaffold with the CLI (optional)
+
+```bash
+agent-wizard create-skill <skill-id>
+```
+
+Creates `./<skill-id>/SKILL.md` with the standard section skeleton. The **first paragraph under the `#` title** becomes the short summary shown in **`agent-wizard list`** (truncate ~80 characters). Fill that paragraph before your first `##` heading.
+
+To contribute to the bundled library: fork the repo, copy the folder to `internal/community/assets/<skill-id>/`, open a PR—see the post-create hints and this section’s checklist.
+
 **Launch-ready checklist**
 
 1. **One workflow** per skill—no generic catch-alls.

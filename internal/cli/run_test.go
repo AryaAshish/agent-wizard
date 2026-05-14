@@ -21,6 +21,17 @@ func TestRunHelp(t *testing.T) {
 	}
 }
 
+func TestRunSubcommandHelpList(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"help", "list"}, &out); err != nil {
+		t.Fatalf("run(help list) error = %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "aligned") || !strings.Contains(s, "awk") {
+		t.Fatalf("run(help list) missing expected prose: %q", s)
+	}
+}
+
 func TestRunSubcommandHelp(t *testing.T) {
 	var out bytes.Buffer
 	if err := run([]string{"help", "add"}, &out); err != nil {
@@ -37,7 +48,7 @@ func TestRunList(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# plan-review skill\n\nTest blurb line for discovery.\n\n## More\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -45,8 +56,21 @@ func TestRunList(t *testing.T) {
 	if err := run([]string{"list", "--source", root}, &out); err != nil {
 		t.Fatalf("run(list) error = %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); got != "plan-review" {
-		t.Fatalf("run(list) output = %q, want %q", got, "plan-review")
+	got := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(got, "plan-review") || !strings.Contains(got, "Test blurb line for discovery.") {
+		t.Fatalf("run(list) output = %q", got)
+	}
+}
+
+func TestRunListEmptyShowsHint(t *testing.T) {
+	root := t.TempDir()
+	var out bytes.Buffer
+	if err := run([]string{"list", "--source", root}, &out); err != nil {
+		t.Fatalf("run(list empty) error = %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "No skills found") || !strings.Contains(s, "create-skill") {
+		t.Fatalf("expected empty-state hints, got: %s", s)
 	}
 }
 
@@ -57,7 +81,7 @@ func TestRunListFilter(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll() error = %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# s\n\nB.\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile() error = %v", err)
 		}
 	}
@@ -66,8 +90,9 @@ func TestRunListFilter(t *testing.T) {
 	if err := run([]string{"list", "--source", root, "--filter", "beta"}, &out); err != nil {
 		t.Fatalf("run(list --filter) error = %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); got != "beta-two" {
-		t.Fatalf("run(list --filter) output = %q, want %q", got, "beta-two")
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, "beta-two") || !strings.Contains(got, "B.") {
+		t.Fatalf("run(list --filter) output = %q", got)
 	}
 }
 
@@ -235,5 +260,49 @@ func TestRunSourcesAddLocalQuietSuppressesWarning(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "not team-shareable") {
 		t.Fatalf("warning should be suppressed, got %q", out.String())
+	}
+}
+
+func TestRunCreateSkill(t *testing.T) {
+	root := t.TempDir()
+	origWd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := run([]string{"create-skill", "my-new-skill"}, &out); err != nil {
+		t.Fatalf("create-skill: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "OK  created my-new-skill/SKILL.md") {
+		t.Fatalf("unexpected out: %s", s)
+	}
+	if !strings.Contains(s, "list --source") || !strings.Contains(s, "internal/community/assets/my-new-skill") || !strings.Contains(s, "CONTRIBUTING.md") {
+		t.Fatalf("missing hints: %s", s)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "my-new-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "## When to use") || !strings.Contains(string(b), "# my-new-skill") {
+		t.Fatalf("template: %s", string(b))
+	}
+}
+
+func TestRunCreateSkillConflict(t *testing.T) {
+	root := t.TempDir()
+	origWd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir("dup-skill", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err := run([]string{"create-skill", "dup-skill"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("want exists error, got err=%v out=%q", err, out.String())
 	}
 }

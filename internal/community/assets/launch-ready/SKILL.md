@@ -1,64 +1,83 @@
 # Launch readiness checklist
 
-Verify a release candidate is safe to ship to production users: CI, migrations, observability, rollback, comms—without skipping “boring” operational checks.
+Verify a release candidate is safe to ship: CI, migrations, observability, rollback, comms.
 
 ## When to use
 
-- Tagging a release that touches persistence, auth, billing, or infra configs.
-- First launch of a feature flag path that widens audience beyond internal testers.
+- Tagging a release touching persistence, auth, billing, or infra configs.
+- Widening a feature flag beyond internal testers.
 
 ## When not to use
 
-- Docs-only or cosmetic releases—run CI only and skip infra sections below.
+- Docs-only or cosmetic release (still output `GO` only if CI scope is explicitly docs-only).
 
 ## Inputs
 
-- Release notes draft or changelog subset for this deploy.
-- Target environment order (staging → prod).
-- Owner on-call handle for rollback decisions.
+- `YOUR_SHA` or tag to deploy.
+- `YOUR_ENV_ORDER` (e.g. staging then prod).
+- `YOUR_ONCALL` rollback decision handle.
 
 ## Outputs
 
-- **GO / NO-GO** with explicit reasons for NO-GO items (tracked tickets acceptable only if risk accepted by owner).
+```
+VERDICT: GO|NO_GO
+
+NO_GO_ITEMS:
+- reason | ticket or owner | "- none -"
+
+CHECKS:
+- [ ] CI green on YOUR_SHA
+- [ ] migrations safe / ordered
+- [ ] kill switch documented
+- [ ] observability for new failure modes
+- [ ] rollback artifact verified
+- [ ] customer comms if needed
+
+NOTES:
+- bullet or "- none -"
+```
 
 ## Steps
 
-1. Confirm CI green on exact SHA being deployed.
+1. Exact revision and working tree cleanliness.
 
 ```bash
-git rev-parse HEAD
+cd YOUR_REPO_ROOT
+git rev-parse YOUR_SHA
 git status --short
 ```
 
-2. Database migrations: applied order safe on live volume? Expand-only before contract changes?
+2. Migrations on live volume risk.
 
 ```bash
-# Example — adapt to your migration runner
-ls -la YOUR_MIGRATION_DIR 2>/dev/null || echo "No migration dir — skip or locate tools."
+ls -lt YOUR_MIGRATION_DIR 2>/dev/null | head -n 15 || echo "Locate YOUR_MIGRATION_DIR"
 ```
 
-3. Feature flags / kill switches documented—who can flip off without redeploy?
-
-4. Observability: dashboards/alerts updated for new failure modes—not only happy-path logs.
+3. Observability gaps.
 
 ```bash
-# Quick grep for obviously missing HTTP handler wiring (adapt languages)
-rg -n "TODO\(metrics\)|FIXME\(alert\)" YOUR_SERVICE_SRC || true
+grep -RInE 'TODO\(metrics\)|FIXME\(alert\)|stub metrics' -- YOUR_SERVICE_SRC 2>/dev/null | head -n 40 || true
 ```
 
-5. Rollback: prior artifact tag verified deployable; destructive migrations avoided or compensated.
+4. Rollback tag.
 
 ```bash
-git tag -l 'v*' | tail -n 5
+git tag -l 'v*' | tail -n 8
 ```
 
-6. Comms: status page / customer notice needed? Who posts?
+## Stop and ask
+
+Stop if `YOUR_SHA` cannot be resolved with `git rev-parse`.
+
+## Reject if
+
+- `VERDICT: GO` while `NO_GO_ITEMS` is non-empty.
+- Destructive migration without rehearsed runbook ⇒ `NO_GO` (do not waive silently).
 
 ## Safety
 
-- Never paste prod credentials into tickets or chat logs—use secret references only.
-- If rollback requires manual data repair—**NO-GO** until runbook exists and is rehearsed on staging.
+- No prod credentials in output; secret references only.
 
 ## References
 
-- Pair this with `pr-review` for the final merge and `plan-review` for pre-build scope alignment.
+- Pair with `pr-review` or `pr-review-strict` for merge review; `plan-review` for pre-build scope.

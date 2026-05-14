@@ -1,51 +1,73 @@
 # Conventional commits and release notes
 
-Apply Conventional Commits (`feat:`, `fix:`, etc.) so changelog automation and semver bumps stay predictable—especially across squashed merges.
+Apply Conventional Commits so changelog automation and semver stay predictable. For **tag-range user-facing** notes, use bundled `release-notes-from-commits` after messages are clean.
 
 ## When to use
 
-- Libraries or CLIs consumed externally where release notes matter.
-- Teams adopting semantic-release or manual Keep a Changelog updates fed by git history.
+- External consumers care about semver/changelog.
+- Squash or merge policy on default branch is defined.
 
 ## When not to use
 
-- Internal-only forks where commit noise exceeds signal—still prefix breaking changes explicitly.
+- You cannot access `git log` on the repo.
 
 ## Inputs
 
-- Allowed commit types/scopes for your org (`feat(api): ...`).
-- Squash-vs-merge policy on default branch.
+- `YOUR_REPO_ROOT`
+- Allowed types/scopes (e.g. `feat(api):`).
+- `YOUR_SQUASH_POLICY`: squash | merge | mixed
 
 ## Outputs
 
-- Commit message examples + CHANGELOG section stub matching unreleased bucket.
+```
+MESSAGE_RULES:
+- subject rule (≤72 chars imperative)
+- breaking rule (footer token or !: style)
+
+EXAMPLE_SUBJECT:
+feat(YOUR_SCOPE): YOUR_SUBJECT
+
+EXAMPLE_BREAKING_FOOTER:
+BREAKING CHANGE: YOUR_BREAK_DESC
+
+CHANGELOG_STUB_HEADINGS:
+- ## Unreleased
+- ### Added | Fixed | Changed (only if commits justify)
+
+COMMIT_SCAN:
+- notable violations (max 10) or "- none -"
+```
 
 ## Steps
 
-1. Write imperative subject ≤72 chars; body explains motivation and rollout notes.
+1. Recent style sample.
 
 ```bash
-git log --oneline -n 15
+cd YOUR_REPO_ROOT
+git log --oneline -n 20
 ```
 
-2. Breaking changes **must** announce token `BREAKING CHANGE:` in footer or use `feat!:` / `fix!:` style per team convention.
+2. Since last tag.
 
 ```bash
-# Preview unreleased commits since last tag
-git describe --tags --abbrev=0 2>/dev/null || echo "No tag yet."
-git log $(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~50)..HEAD --oneline
+git describe --tags --abbrev=0 2>/dev/null || echo "YOUR_FALLBACK_REF"
+git log $(git describe --tags --abbrev=0 2>/dev/null || echo YOUR_FALLBACK_REF)..HEAD --oneline | head -n 80
 ```
 
-3. Map types to changelog buckets: feat→Added, fix→Fixed, perf→Changed—automate later; manual pass acceptable early.
+3. Type prefix scan.
 
 ```bash
-rg "^feat:|^fix:|^perf:|^docs:|^chore:" <<< "$(git log -n 50 --pretty=%s)" || true
+git log -n 80 --pretty=%s | grep -E '^(feat|fix|perf|docs|chore)(\(|):' | head -n 40 || true
 ```
+
+## Stop and ask
+
+Stop if not a git checkout (`YOUR_REPO_ROOT` has no `.git`).
+
+## Reject if
+
+- `CHANGELOG_STUB` invents shipped features not present in `COMMIT_SCAN` subjects.
 
 ## Safety
 
-- Don’t rewrite published history on shared default branches—communicate migrations instead.
-
-## References
-
-- Pair with `launch-ready` when tagging—ensure CHANGELOG unreleased section drains into tagged release.
+- Do not recommend `git push --force` on shared default branch.

@@ -47,6 +47,8 @@ func run(args []string, stdout io.Writer) error {
 		return runInit(stdout)
 	case "list":
 		return runListExpanded(args[1:], stdout)
+	case "create-skill":
+		return runCreateSkill(args[1:], stdout)
 	case "add":
 		return runAdd(args[1:], stdout)
 	case "remove":
@@ -106,6 +108,7 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "Commands:")
 	fmt.Fprintln(stdout, "  init     Initialize project and launch community starter picker")
 	fmt.Fprintln(stdout, "  list     List available skills from a source")
+	fmt.Fprintln(stdout, "  create-skill  Scaffold a new skill folder with SKILL.md template")
 	fmt.Fprintln(stdout, "  add      Add skill to manifest (auto-init + sync by default)")
 	fmt.Fprintln(stdout, "  remove   Remove skill from project manifest")
 	fmt.Fprintln(stdout, "  status   Show manifest/source status (+ --json/--check-drifts)")
@@ -302,11 +305,19 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 	switch command {
 	case "list":
 		fmt.Fprintln(stdout, "Usage: agent-wizard list [--source PATH | --source-name NAME | --installed] [--filter SUBSTRING]")
+		fmt.Fprintln(stdout, " Prints two columns (aligned): skill id, then summary from the first paragraph under the title in SKILL.md.")
+		fmt.Fprintln(stdout, " Empty result: hints for community list, filters, or create-skill.")
+		fmt.Fprintln(stdout, " Scripts: ids are lowercase [a-z0-9-]+ so awk '{print $1}' usually returns the skill id.")
 		fmt.Fprintln(stdout, "Examples:")
 		fmt.Fprintln(stdout, "  agent-wizard list --source ./examples/library")
 		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
 		fmt.Fprintln(stdout, "  agent-wizard list --source-name community --filter pr")
 		fmt.Fprintln(stdout, "  agent-wizard list --installed")
+		return true
+	case "create-skill":
+		fmt.Fprintln(stdout, "Usage: agent-wizard create-skill <skill-id>")
+		fmt.Fprintln(stdout, " Creates ./<skill-id>/SKILL.md with a starter template.")
+		fmt.Fprintln(stdout, " Skill id must match: lowercase letters, digits, dashes (e.g. my-checklist).")
 		return true
 	case "init":
 		fmt.Fprintln(stdout, "Usage: agent-wizard init")

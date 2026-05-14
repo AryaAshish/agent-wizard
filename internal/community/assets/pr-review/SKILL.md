@@ -1,62 +1,79 @@
 # Pull request review
 
-Produce a structured PR review: correctness, tests, rollout risk, security-sensitive surfaces, and concrete follow-ups—without bikeshedding style-only nits unless your team mandates them.
+Structured PR review: correctness, tests, rollout, security-sensitive surfaces, concrete follow-ups. For **severity-tagged machine-parseable** output only, use bundled `pr-review-strict` instead.
 
 ## When to use
 
-- You have a diff (GitHub/GitLab PR or local branch) and need a reviewer checklist before merge.
-- You want consistency across repos so junior reviewers don’t forget rollback / observability / auth boundaries.
+- You have a diff (`YOUR_BASE_REF` vs `YOUR_HEAD_REF`, or PR with fetchable patch).
+- You need a merge checklist before ship.
 
 ## When not to use
 
-- Hot incident response where latency beats thoroughness—use your runbook skill instead.
-- Pure formatting-only changes where policy already says “approve if CI green.”
+- Incident response where latency beats thoroughness.
+- No diff and no file list.
 
 ## Inputs
 
-- Link or branch name and base branch (e.g. `feature/foo` vs `main`).
-- Risk tier: user-facing API, auth/payments, migrations, infra—flag **high** when any apply.
-- Test evidence: CI link or paste failing tests.
+- `YOUR_BASE_REF`, `YOUR_HEAD_REF` (or equivalent).
+- `YOUR_RISK_TIER`: low | medium | high (auth, payments, migrations, infra ⇒ high unless disproven).
+- `YOUR_TEST_CMD` (e.g. `go test ./... -count=1` or `npm test`—read-only).
 
 ## Outputs
 
-- Ordered findings: **blockers**, **should-fix**, **nice-to-have**.
-- Explicit **ship / don’t ship** with rollback note if ship.
+```
+SHIP: ship|dont_ship
+
+BLOCKERS:
+- bullet or "- none -"
+
+SHOULD_FIX:
+- bullet or "- none -"
+
+NICE_TO_HAVE:
+- bullet or "- none -"
+
+ROLLBACK_NOTE:
+- one sentence or "- n/a -"
+
+OPEN_QUESTIONS:
+- bullet or "- none -"
+```
 
 ## Steps
 
-1. Summarize intent in one sentence from PR title/body only—do not invent product goals.
+1. Intent from title/body only—do not invent product goals.
 
 ```bash
-git fetch origin && git log --oneline origin/main..HEAD | head -n 20
-git diff origin/main...HEAD --stat
+git fetch origin
+git log --oneline YOUR_BASE_REF..YOUR_HEAD_REF | head -n 25
+git diff YOUR_BASE_REF...YOUR_HEAD_REF --stat
 ```
 
-2. Trace correctness on critical paths touched (handlers, serializers, migrations). List assumptions.
+2. Critical paths: handlers, serializers, migrations.
 
 ```bash
-git diff origin/main...HEAD -- '*.go' '*.ts' '*.tsx' '*.sql'
+git diff YOUR_BASE_REF...YOUR_HEAD_REF --name-only | head -n 200
+git diff YOUR_BASE_REF...YOUR_HEAD_REF -- '*.go' '*.ts' '*.tsx' '*.sql' | head -n 400
 ```
 
-3. Map tests to behavior changed—note gaps where coverage is story-only.
+3. Tests and dependency deltas.
 
 ```bash
-go test ./... -count=1 2>&1 | tail -n 30
+YOUR_TEST_CMD
+git diff YOUR_BASE_REF...YOUR_HEAD_REF -- go.mod go.sum package.json package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null | head -n 120
 ```
 
-4. Security pass: secrets in code, injection, authz boundaries, dependency changes with audit impact.
+4. Security pass: secrets, injection, authz; if `eval`/shell-outs with user input or dynamic SQL without binds ⇒ list under `BLOCKERS`.
 
-```bash
-git diff origin/main...HEAD -- go.mod go.sum package.json package-lock.json
-```
+## Stop and ask
 
-5. Rollout: feature flags, migrations order, backwards compatibility, observability (logs/metrics) for new paths.
+Stop if `git diff YOUR_BASE_REF...YOUR_HEAD_REF` is empty and no patch was supplied.
+
+## Reject if
+
+- `SHIP: ship` while any `BLOCKER` remains unaddressed or unaccepted by an explicit risk note (not allowed—use `dont_ship` or move to `OPEN_QUESTIONS` with owner).
+- Any finding lacks a file or hunk reference from the diff.
 
 ## Safety
 
-- Do not post production credentials, customer PII, or internal URLs in review comments—redact tokens and hostnames.
-- If the diff introduces `eval`, shell-outs with user input, or dynamic SQL without binds—**block** until justified.
-
-## References
-
-- Align tone with team norms; when unsure, prefer asking one clarifying question over approving ambiguity.
+- Redact tokens, hostnames with customer data, PII from pasted logs.

@@ -1,58 +1,75 @@
 # Dockerfile hardening pass
 
-Produce a safer default container image for Go or generic services: multi-stage builds, non-root user, pinned bases, minimal runtime packages.
+Safer default container: multi-stage, non-root, pinned bases, minimal runtime packages.
 
 ## When to use
 
-- Shipping user-facing APIs or workers where container breakout impact is meaningful.
-- Replacing `FROM ubuntu:latest` patterns without reproducibility.
+- Shipping APIs/workers where breakout impact matters.
+- Replacing `FROM *:latest` without digest policy.
 
 ## When not to use
 
-- Internal ephemeral jobs where startup speed dominates and threat model excludes multi-tenant escape—still avoid `latest` tags.
+- No `Dockerfile` path and no image build context named.
 
 ## Inputs
 
-- Base image policy (distroless, alpine, wolfi, etc.).
-- Port and user UID requirements from platform (k8s securityContext).
+- `YOUR_REPO_ROOT`
+- `YOUR_DOCKERFILE_PATH`
+- Base policy: distroless | alpine | wolfi | other
 
 ## Outputs
 
-- Dockerfile diff with rationale for each layer removed or merged.
+```
+CHANGES:
+- layer or instruction | rationale (one line each)
+
+USER_AND_PORTS:
+- USER line target | exposed ports note
+
+DIGEST_PIN:
+- image@sha256:... or "semver tag only with reason"
+
+REMOVED_RUNTIME_PKGS:
+- bullet or "- none -"
+
+BLOCKERS:
+- bullet or "- none -"
+```
 
 ## Steps
 
-1. Multi-stage build: compile/build in builder; copy only binaries + static assets to runtime.
-
-```dockerfile
-# Example pattern — adapt paths and binary names
-FROM golang:1.25-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server .
-
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/server /server
-USER nonroot:nonroot
-ENTRYPOINT ["/server"]
-```
-
-2. Pin digest optionally when reproducibility matters beyond semver tags.
+1. Read current Dockerfile.
 
 ```bash
-docker pull gcr.io/distroless/static-debian12:nonroot
-docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot
+cd YOUR_REPO_ROOT
+test -f YOUR_DOCKERFILE_PATH && sed -n '1,200p' YOUR_DOCKERFILE_PATH || echo "missing YOUR_DOCKERFILE_PATH"
 ```
 
-3. Drop package managers from runtime unless mandatory—fewer CVE surface updates.
+2. Scan for risk patterns.
+
+```bash
+grep -nE 'FROM |USER |^RUN |curl |wget |apt-get|apk add|secrets?' YOUR_DOCKERFILE_PATH || true
+```
+
+3. Optional digest pin (when reproducibility required).
+
+```bash
+docker pull YOUR_BASE_IMAGE_TAG 2>/dev/null && docker inspect --format '{{index .RepoDigests 0}}' YOUR_BASE_IMAGE_TAG || echo "Skipping digest: no docker"
+```
+
+## Stop and ask
+
+Stop if `YOUR_DOCKERFILE_PATH` does not exist.
+
+## Reject if
+
+- Final image runs as root in production path without `BLOCKERS` documenting accepted exception.
+- Build-time secrets via `ARG` for credentials without `BLOCKERS` + mitigation.
 
 ## Safety
 
-- Secrets via build-args leak into image history—use runtime injection (env, mounted files, KMS).
-- Running as root in production containers—block unless documented exception.
+- No `docker run` with host mounts unless user requests; planning focus.
 
 ## References
 
-- Scan images in CI (`grype`, `trivy`) after Dockerfile changes—automate separately.
+- Scan with `grype`/`trivy` in CI separately from this review.
