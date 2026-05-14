@@ -26,7 +26,7 @@ Produce a safer default container image for Go or generic services: multi-stage 
 
 ```dockerfile
 # Example pattern — adapt paths and binary names
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

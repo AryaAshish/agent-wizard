@@ -73,7 +73,7 @@ brew install agent-wizard
 
 If you do not have a tap configured yet, use **curl** or **npm** instead.
 
-### Build from source (advanced, requires Go 1.22+)
+### Build from source (advanced, requires Go 1.25+)
 
 ```bash
 go install github.com/aryaashish/agent-wizard@latest

@@ -38,7 +38,7 @@ strategy:
   fail-fast: false
   matrix:
     os: [ubuntu-latest]
-    go-version: ["1.22.x"]
+    go-version: ["1.25.x"]
 ```
 
 3. Cache modules via `actions/setup-go` with `cache: true` keyed by `go.sum`.
