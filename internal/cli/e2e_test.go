@@ -11,6 +11,36 @@ import (
 	"github.com/aryaashish/agent-wizard/internal/config"
 )
 
+func TestEndUserFlow_EmbeddedCommunity_ListFilterAddSync(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	restore := setEnvAndCwd(t, map[string]string{"HOME": home}, project)
+	defer restore()
+
+	var out bytes.Buffer
+	mustRun(t, []string{"init"}, &out)
+	out.Reset()
+
+	mustRun(t, []string{"list", "--source-name", "community", "--filter", "pr-review"}, &out)
+	if !strings.Contains(out.String(), "pr-review") {
+		t.Fatalf("expected pr-review in list output, got:\n%s", out.String())
+	}
+	out.Reset()
+
+	mustRun(t, []string{"add", "pr-review", "--source", "community"}, &out)
+	out.Reset()
+	mustRun(t, []string{"sync"}, &out)
+
+	skillPath := filepath.Join(project, ".agents", "skills", "pr-review", "SKILL.md")
+	b, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("synced community skill missing: %v", err)
+	}
+	if !strings.Contains(string(b), "When to use") {
+		t.Fatalf("expected launch-ready SKILL sections, got head: %.200q", string(b))
+	}
+}
+
 func TestEndUserFlow_LocalSource_Pack_Lock_Sync_StatusJSON(t *testing.T) {
 	project := t.TempDir()
 	home := t.TempDir()
