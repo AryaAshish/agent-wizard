@@ -7,7 +7,7 @@ Thank you for helping improve `agent-wizard`.
 1. Open an issue for behavior or schema contract changes—use templates under `.github/ISSUE_TEMPLATE/` (`bug_report`, `feature_request`, `skill_request`).
 2. Prefer **small commits** with [Conventional Commits](https://www.conventionalcommits.org/) prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
 3. Ensure `go test ./...` and `bash scripts/verify_docs.sh` pass locally before pushing.
-4. Release candidates: execute **phases P1–P3 + P4 + P5 (incl. P5.1/P5.2 via `go test`)** then complete **manual P6** in [docs/test-plan-ship.md](docs/test-plan-ship.md)—**do not tag** without **P6.3** (canonical README demo ×2 repos) and **P6.4** (Docker or fresh-environment smoke). Link your signed checklist in the release PR.
+4. Release candidates: execute **phases P1–P3 + P4 + P5 (incl. P5.1/P5.2 via `go test`)** then complete **manual P6** in [docs/test-plan-ship.md](docs/test-plan-ship.md)—**do not tag** without **P6.3** (canonical README demo ×2 repos **using the same install path as users**: e.g. `VERSION=vX.Y.Z curl …/install.sh | sh` or the published release asset, not only `@main`) and **P6.4** (Docker or fresh-environment smoke). Link your signed checklist in the release PR.
 
 Maintainers triage **best-effort ~weekly**; critical regressions jump the queue.
 

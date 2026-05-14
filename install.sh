@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
 set -eu
+# Default: VERSION=latest → resolves to newest GitHub release tag (see resolve_version).
+# Pin a release (after the tag exists on GitHub):  VERSION=v0.1.3 curl -fsSL …/install.sh | sh
 VERSION="${VERSION:-latest}"
 DIR="${INSTALL_DIR:-$HOME/go/bin}"
 REPO="${REPO:-AryaAshish/agent-wizard}"
