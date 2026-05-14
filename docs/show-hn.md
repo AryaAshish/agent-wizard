@@ -20,6 +20,8 @@ agent-wizard list --source-name community --filter pr
 agent-wizard add pr-review --source community && agent-wizard sync
 ```
 
+On **v0.1.3+**, a single `add pr-review --source community` is enough in a fresh repo; this block stays compatible with **v0.1.2** (explicit `init` + `sync`).
+
 Repeat in `/tmp/aw-demo-b` with the same commands—same playbook, zero forwarding threads.
 
 Repo: https://github.com/AryaAshish/agent-wizard  

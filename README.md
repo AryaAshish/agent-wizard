@@ -49,6 +49,12 @@ Writes the binary into `$HOME/go/bin` by default (override with `INSTALL_DIR`):
 curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
 ```
 
+Install a **specific GitHub release** (must exist with matching tarball + `checksums.txt`):
+
+```bash
+VERSION=v0.1.3 curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
+```
+
 ### npm / npx
 
 The published package is **`@aryaashish/agent-wizard`**. It downloads the matching release from GitHub Releases, verifies checksums, caches under `~/.cache/agent-wizard/npm`, and runs the real binary.

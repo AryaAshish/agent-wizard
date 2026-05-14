@@ -4,7 +4,7 @@
 
 ## Principles
 
-1. **Critical path first:** install → init → discover → add/sync → second project → team sources → lock.
+1. **Critical path first:** install → discover → **`add`** (creates manifest + sync when missing, v0.1.3+) → optional **`init`** for picker / older releases → second project → team sources → lock.
 2. **Automate what’s stable:** `go test`, `scripts/*.sh`; avoid flaky network on every PR where possible.
 3. **Separate release rehearsal:** curling npm / human demo optional on schedule, **mandatory before tag**.
 4. **Evidence on tag:** Maintainer records SHA + date in release PR or [`docs/metrics.md`](./metrics.md).
@@ -36,7 +36,7 @@ Docs-only PRs may skip **P4** locally; **shipping a tag still requires P4 + P6.3
 | **P3 — Vuln baseline** | Dependency scan | `govulncheck ./...` (or rely on [.github/workflows/ci.yml](../.github/workflows/ci.yml)) | Exit **0** or waiver in release notes |
 | **P4 — Release-binary smoke** | Tarball + `install.sh` + npm shim + CLI | `bash scripts/distribution/smoke.sh` (optional `VERSION=vX.Y.Z-rc`) | **`distribution smoke passed`** |
 | **P5 — Hermetic E2E** | Embedded `community` in `go test` | `go test ./internal/cli/... -count=1 -run 'TestEndUserFlow_'` | Exit **0** |
-| **P5.1 — Failure + hints** | Bad skill/manifest/source UX | Implemented as `TestCLI_ErrorHints` in [`internal/cli/e2e_test.go`](../internal/cli/e2e_test.go): unknown skill sync, malformed YAML manifest, unresolved manifest source alongside `community` | Each case: **non‑zero exit** and error text contains **`hint:`** (preferred) or unambiguous actionable substring |
+| **P5.1 — Failure + hints** | Bad skill/manifest/source UX | Implemented as `TestCLI_ErrorHints` in [`internal/cli/e2e_test.go`](../internal/cli/e2e_test.go): unknown skill sync, **corrupt YAML on `add` load**, malformed YAML manifest on `sync`, unresolved manifest source alongside `community` | Each case: **non‑zero exit** and error text contains **`hint:`** (preferred) or unambiguous actionable substring |
 | **P5.2 — Idempotency** | Repeated `add` / `sync` | `TestCLI_IdempotentAddSync` + **`smoke.sh` runs `sync` twice** | Second `sync` exits **0**; first skill tree still valid |
 | **P6 — Manual pre-tagrollup** | See subsections below | Checklists | Boxes + sign-off |
 
@@ -64,7 +64,7 @@ Complete before **tag**. Record **git SHA + date**.
 
 ### **P6.3 Canonical demo gate (blocks tag)**
 
-- [ ] Repo **A:** follow README “Happy path” fenced block end-to-end (non-interactive `init` acceptable).
+- [ ] Repo **A:** follow README “Happy path” fenced block end-to-end on the **same major.minor as the tag** (v0.1.3+ one-line `add`; **v0.1.2** per README version note: `init` then `add` then `sync`).
 - [ ] Repo **B:** repeat in a fresh directory — same commands, synced `SKILL.md` appears.
 - [ ] **Do not tag** if P6.3 cannot be completed **the same calendar day** as the candidate SHA (fix or postpone release).
 
@@ -93,8 +93,8 @@ Frequency: at minimum before **first GA of a minor** / after materializing insta
 | Automated | Covers |
 |-----------|--------|
 | `TestEndUserFlow_EmbeddedCommunity_ListFilterAddSync`, `PackAddSync` | Embedded community listing, single skill, **pack bundle** (`android-starter` five skills) |
-| `TestCLI_ErrorHints`, `TestCLI_IdempotentAddSync` | **P5.1 / P5.2**: missing manifest on `add`, malformed manifest YAML on `sync`, unknown skill sync, bogus second manifest source alongside `community`, duplicate add + double `sync` |
-| `bash scripts/distribution/smoke.sh` (two `sync` calls) | **P4 / idempotency** on released-style binary |
+| `TestCLI_ErrorHints`, `TestCLI_IdempotentAddSync`, `TestEndUserFlow_EmbeddedCommunity_AddColdStartNoInit` | **P5.1 / P5.2**: corrupt manifest on `add`, malformed YAML on `sync`, unknown skill sync, bogus second manifest source alongside `community`, duplicate add + double `sync`, **cold `add` without `init`** |
+| `bash scripts/distribution/smoke.sh` (cold `add`, then two `sync` calls) | **P4 / idempotency** on released-style binary |
 
 ---
 

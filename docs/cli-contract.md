@@ -4,6 +4,7 @@
 
 - Prefer subcommands: `init`, `list`, `add`, `sync`, `status`, `sources`, `lock`, `migrate`, `cache`, `ci-check`, `browse`, `watch`, `import`, `pack`, `catalog`, `icp`.
 - Flags complement subcommands; keep stable long flags over time.
+- **`add` (v0.1.3+):** if `agentskills.yaml` is missing, creates it (headless init with bundled **community** source), appends the skill, then runs **`sync`** unless **`--no-sync`**. Older releases required **`init`** before the first **`add`**.
 
 ## Machine output
 
