@@ -11,8 +11,8 @@ func TestIsLegacyCommunityGitSource(t *testing.T) {
 	t.Parallel()
 
 	legacy := config.Source{
-		Name: community.SourceName,
-		Kind: "git",
+		Name:   community.SourceName,
+		Kind:   "git",
 		GitURL: "https://github.com/AryaAshish/agent-skills-community.git",
 	}
 	if !IsLegacyCommunityGitSource(legacy) {

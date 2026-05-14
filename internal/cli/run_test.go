@@ -50,6 +50,27 @@ func TestRunList(t *testing.T) {
 	}
 }
 
+func TestRunListFilter(t *testing.T) {
+	root := t.TempDir()
+	for _, id := range []string{"alpha-one", "beta-two"} {
+		dir := filepath.Join(root, id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+	}
+
+	var out bytes.Buffer
+	if err := run([]string{"list", "--source", root, "--filter", "beta"}, &out); err != nil {
+		t.Fatalf("run(list --filter) error = %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "beta-two" {
+		t.Fatalf("run(list --filter) output = %q, want %q", got, "beta-two")
+	}
+}
+
 func TestRunInitAddRemove(t *testing.T) {
 	project := t.TempDir()
 	orig, _ := os.Getwd()
@@ -71,7 +92,7 @@ func TestRunInitAddRemove(t *testing.T) {
 	if err := run([]string{"add", "pr-review"}, &out); err != nil {
 		t.Fatalf("run(add) error = %v", err)
 	}
-	if err := run([]string{"add", "pr-review", "-android"}, &out); err != nil {
+	if err := run([]string{"add", "pr-review", "-android", "--no-sync"}, &out); err != nil {
 		t.Fatalf("run(add -android) error = %v", err)
 	}
 	if err := run([]string{"remove", "pr-review"}, &out); err != nil {

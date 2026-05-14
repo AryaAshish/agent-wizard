@@ -1,3 +1,13 @@
 /bin/
 dist/
 *.log
+
+# Secrets and local env (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+*.p12
+secrets.yaml

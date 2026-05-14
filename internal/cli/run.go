@@ -2,16 +2,19 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aryaashish/agent-wizard/internal/community"
 	"github.com/aryaashish/agent-wizard/internal/config"
 	"github.com/aryaashish/agent-wizard/internal/engine"
 	"github.com/aryaashish/agent-wizard/internal/manifest"
+	"github.com/aryaashish/agent-wizard/internal/model"
 )
 
 func Run(args []string) error {
@@ -103,7 +106,7 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "Commands:")
 	fmt.Fprintln(stdout, "  init     Initialize project and launch community starter picker")
 	fmt.Fprintln(stdout, "  list     List available skills from a source")
-	fmt.Fprintln(stdout, "  add      Add skill to manifest (supports source qualifier)")
+	fmt.Fprintln(stdout, "  add      Add skill to manifest (auto-init + sync by default)")
 	fmt.Fprintln(stdout, "  remove   Remove skill from project manifest")
 	fmt.Fprintln(stdout, "  status   Show manifest/source status (+ --json/--check-drifts)")
 	fmt.Fprintln(stdout, "  sync     Sync selected skills to target dir")
@@ -125,6 +128,14 @@ func printHelp(stdout io.Writer) {
 	fmt.Fprintln(stdout, "Tip:")
 	fmt.Fprintln(stdout, "  agent-wizard <command> --help")
 	fmt.Fprintln(stdout, "  agent-wizard help <command>")
+}
+
+func printInitNextSteps(stdout io.Writer) {
+	ui := newUI(stdout)
+	ui.Section("Next steps")
+	fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
+	fmt.Fprintln(stdout, "  agent-wizard add pr-review --source community")
+	fmt.Fprintln(stdout, "  agent-wizard sync")
 }
 
 func runInit(stdout io.Writer) error {
@@ -157,17 +168,7 @@ func runInit(stdout io.Writer) error {
 	ui.OK(fmt.Sprintf("initialized %s with targetDir=%s", manifest.FileName, m.TargetDir))
 	if !isInteractiveTerminal() {
 		ui.Warn("non-interactive terminal detected; skipping picker")
-		ui.Commands(
-			"Browse community skills",
-			"agent-wizard list --source-name community",
-		)
-		ui.Commands(
-			"Install common starter skills",
-			"agent-wizard add pr-review --source community",
-			"agent-wizard pack add android-starter",
-			"agent-wizard sync",
-		)
-		ui.NextActions("agent-wizard status", "agent-wizard list --installed")
+		printInitNextSteps(stdout)
 		return nil
 	}
 	selection, err := runInitPicker(stdout)
@@ -196,18 +197,39 @@ func runInit(stdout io.Writer) error {
 		fmt.Fprintf(stdout, "Installed: %s\n", strings.Join(installed, ", "))
 	}
 	fmt.Fprintf(stdout, "Target: %s\n", m.TargetDir)
-	ui.Commands(
-		"Browse community skills",
-		"agent-wizard list --source-name community",
-	)
-	ui.Commands(
-		"Install common starter skills",
-		"agent-wizard add pr-review --source community",
-		"agent-wizard pack add android-starter",
-		"agent-wizard sync",
-	)
-	ui.NextActions("agent-wizard status", "agent-wizard list --installed")
+	printInitNextSteps(stdout)
 	return nil
+}
+
+// loadManifestOrHeadlessInit returns the project manifest; if agentskills.yaml is missing,
+// creates it using the same non-interactive wiring as init (community source), without the picker.
+func loadManifestOrHeadlessInit(wd string) (manifest.Manifest, error) {
+	m, err := manifest.Load(wd)
+	if err == nil {
+		return m, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return manifest.Manifest{}, fmt.Errorf("%w\nhint: fix agentskills.yaml YAML or run `agent-wizard init` in the project root", err)
+	}
+	m, err = manifest.Init(wd)
+	if err != nil {
+		if strings.Contains(err.Error(), "manifest already exists") {
+			m, err = manifest.Load(wd)
+			if err != nil {
+				return manifest.Manifest{}, fmt.Errorf("%w\nhint: fix agentskills.yaml YAML or run `agent-wizard init` in the project root", err)
+			}
+			return m, nil
+		}
+		return manifest.Manifest{}, err
+	}
+	if err := ensureCommunitySourceConfigured(); err != nil {
+		return manifest.Manifest{}, err
+	}
+	m.Sources = engine.AddUnique(m.Sources, community.SourceName)
+	if err := manifest.Save(wd, m); err != nil {
+		return manifest.Manifest{}, err
+	}
+	return m, nil
 }
 
 func runAdd(args []string, stdout io.Writer) error {
@@ -224,6 +246,8 @@ func runAdd(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var sourceName string
+	var noSync bool
+	fs.BoolVar(&noSync, "no-sync", false, "only update manifest; do not run sync")
 	fs.StringVar(&sourceName, "source", "", "source alias used to qualify skill id")
 	fs.StringVar(&sourceName, "s", "", "source alias used to qualify skill id (shorthand)")
 	if err := fs.Parse(remaining); err != nil {
@@ -245,7 +269,7 @@ func runAdd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(wd)
+	m, err := loadManifestOrHeadlessInit(wd)
 	if err != nil {
 		return err
 	}
@@ -253,7 +277,20 @@ func runAdd(args []string, stdout io.Writer) error {
 	if err := manifest.Save(wd, m); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "added %s\n", skillID)
+	ref, err := model.ParseSkillRef(skillID)
+	if err != nil {
+		return err
+	}
+	if noSync {
+		fmt.Fprintf(stdout, "added %s to manifest\n", skillID)
+		fmt.Fprintf(stdout, "hint: run `agent-wizard sync` to copy skills to disk\n")
+		return nil
+	}
+	if err := runSync([]string{}, stdout); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "✔ Installed %s\n", ref.ID)
+	fmt.Fprintf(stdout, "→ Open: %s\n", filepath.ToSlash(filepath.Join(m.TargetDir, ref.ID, "SKILL.md")))
 	return nil
 }
 
@@ -264,10 +301,11 @@ func isHelpFlag(arg string) bool {
 func printCommandHelp(command string, stdout io.Writer) bool {
 	switch command {
 	case "list":
-		fmt.Fprintln(stdout, "Usage: agent-wizard list [--source PATH | --source-name NAME | --installed]")
+		fmt.Fprintln(stdout, "Usage: agent-wizard list [--source PATH | --source-name NAME | --installed] [--filter SUBSTRING]")
 		fmt.Fprintln(stdout, "Examples:")
 		fmt.Fprintln(stdout, "  agent-wizard list --source ./examples/library")
 		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
+		fmt.Fprintln(stdout, "  agent-wizard list --source-name community --filter pr")
 		fmt.Fprintln(stdout, "  agent-wizard list --installed")
 		return true
 	case "init":
@@ -277,10 +315,13 @@ func printCommandHelp(command string, stdout io.Writer) bool {
 		fmt.Fprintln(stdout, "  agent-wizard list --source-name community")
 		return true
 	case "add":
-		fmt.Fprintln(stdout, "Usage: agent-wizard add <skill-id> [--source NAME]")
+		fmt.Fprintln(stdout, "Usage: agent-wizard add <skill-id> [--source NAME] [--no-sync]")
+		fmt.Fprintln(stdout, "Creates agentskills.yaml if missing (headless init with community source), updates the manifest,")
+		fmt.Fprintln(stdout, "then runs sync by default. Use --no-sync to only write the manifest.")
 		fmt.Fprintln(stdout, "Shortcut:")
 		fmt.Fprintln(stdout, "  agent-wizard add <skill-id> -<source>")
 		fmt.Fprintln(stdout, "Examples:")
+		fmt.Fprintln(stdout, "  agent-wizard add pr-review --source community")
 		fmt.Fprintln(stdout, "  agent-wizard add pr-review --source android")
 		fmt.Fprintln(stdout, "  agent-wizard add pr-review -android")
 		return true
@@ -351,7 +392,7 @@ func runSync(args []string, stdout io.Writer) error {
 	}
 	m, err := manifest.Load(wd)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w\nhint: fix agentskills.yaml YAML or run `agent-wizard init` in the project root", err)
 	}
 	cfgPath, err := config.DefaultPath()
 	if err != nil {
@@ -363,7 +404,7 @@ func runSync(args []string, stdout io.Writer) error {
 	}
 	opts := engine.SyncOpts{DryRun: dryRun, Prune: prune, StrictLock: strictLock}
 	if err := engine.Sync(wd, m, cfg, stdout, opts); err != nil {
-		return err
+		return fmt.Errorf("%w\nhint: check agentskills.yaml sources and skill ids; try `agent-wizard list --source-name community` or `agent-wizard list --installed`", err)
 	}
 	if !dryRun {
 		newUI(stdout).NextActions("agent-wizard status", "agent-wizard list --installed")
