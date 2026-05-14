@@ -1,45 +1,45 @@
 # agent-wizard
 
-**What:** CLI that installs reusable **agent skills** (folders with `SKILL.md`) into your repo—like package management for agent playbooks.
+CLI installs versioned agent skills into your repo—one command, no Slack drift.
 
-**Who:** Developers using **Cursor, Claude Code, Codex**, or any workflow that reads skill files from disk.
+- **Pain:** playbooks rot in chat and get re-pasted wrong per repo.
+- **Do:** `add <skill> --source <library>` materializes `SKILL.md` under your tree.
+- **Win:** same skill id everywhere; diff and review updates like code.
 
-**Outcome:** Skills land under your chosen directory in **about a minute**, ready to commit.
+v0.1.3+: first `add` writes project config and runs **sync** (pass `--no-sync` to skip the copy step).
 
-**Install:** `curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh` — or `npm i -g @aryaashish/agent-wizard` ([releases](https://github.com/AryaAshish/agent-wizard/releases)).
+## Use a community skill in this repo
 
-**Why not only copy-paste:** The **next repo** repeats with **one command** (`add` initializes the manifest and syncs)—no hunting Slack or Notion. Pin versions with `lock` / `sync --strict-lock` when your team needs one truth.
+1. `curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh`
+2. `cd /path/to/your/repo`
+3. `agent-wizard add pr-review --source community` → **`.agents/skills/pr-review/SKILL.md`** — e.g. `head -n1 .agents/skills/pr-review/SKILL.md` prints `# Pull request review`.
+4. You get a real file in git; agents and editors load that path instead of fragile pasted prompts.
+5. `agent-wizard list --source-name community` · [Bundled skills](docs/SKILLS.md)
+6. npm: `npm i -g @aryaashish/agent-wizard` ([releases](https://github.com/AryaAshish/agent-wizard/releases)), then repeat step 3.
+7. v0.1.2 or older: run `init`, then `add`, then `sync`, or upgrade.
+
+## Use your team’s skill library
+
+1. Put each skill as `skill-id/SKILL.md` in one Git repo; push (private GitHub is fine).
+2. `agent-wizard sources add --name my-team --kind git --git-url https://github.com/your-org/my-team-skills.git`
+3. In each app repo: `agent-wizard add deploy-checklist --source my-team` → **`.agents/skills/deploy-checklist/SKILL.md`**
+4. Use the same workflow across all repos.
+5. Definitions stay in one skills repo; every service pulls by id; ship updates through normal PRs.
+
+`init` is optional (interactive picker / defaults)—not required for steps above on v0.1.3+.
+
+---
+
+## Detailed install options
 
 ### Why not just copy markdown?
 
 | Copy-paste | agent-wizard |
 |------------|----------------|
-| Playbooks drift across Slack / Notion | Playbooks live **next to your code**; `agentskills.yaml` records what this repo installs |
-| Re-copy every new service | **Second project:** same `add … --source …` line, same skill id |
+| Playbooks drift across Slack / Notion | Playbooks live **next to your code**; the project file lists what’s installed |
+| Re-copy every new service | **Next repo:** same `add … --source …` line, same skill id |
 | Everyone on different revisions | **`lock`** — teammates sync the **same** pinned revision |
-| Rewire paths per agent | **`targetDir` / profiles** — one manifest, multiple agent layouts |
-
-## Happy path (first run)
-
-**Version:** The single-command flow below needs **v0.1.3 or newer** (or any build from `main`, including `go install github.com/aryaashish/agent-wizard@main`). **v0.1.2** and older do not auto-create the manifest: run **`agent-wizard init`** once, then **`agent-wizard add pr-review --source community`** and **`agent-wizard sync`** (or upgrade). If you use **`install.sh`** or a **GitHub Release** tarball, pick the asset for **v0.1.3+** before expecting this path to work without `init`.
-
-With no manifest yet, `add` creates `agentskills.yaml`, wires the bundled **community** source, and runs **sync** (use `--no-sync` if you only want the manifest updated).
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
-hash -r 2>/dev/null || true
-agent-wizard --version
-mkdir -p /tmp/my-agent-demo && cd /tmp/my-agent-demo && git init -q
-agent-wizard add pr-review --source community
-# Optional: browse first — agent-wizard list --source-name community --filter pr
-test -f .agents/skills/pr-review/SKILL.md && echo "Skill on disk — open it in your editor."
-```
-
-Interactive **`init`** is still useful for the starter picker and browsing before you choose skills. **`add`** does not open the picker. **[Bundled skill index →](docs/SKILLS.md)**
-
----
-
-## Step 1 — Install
+| Rewire paths per agent | **Profiles** — one config, multiple install paths |
 
 ### curl installer (works everywhere we ship binaries)
 
@@ -115,89 +115,11 @@ Older setups stored the `community` source in **`~/.agent-wizard-config.yaml`** 
 
 ---
 
-## Step 2 — Set up your project
+## Building your team library (detail)
 
-Open your project in Cursor (or any editor) and run:
+Each skill is a folder with `SKILL.md`. Register once and `add` from each app repo as in **Use your team’s skill library** above.
 
-```bash
-agent-wizard init
-```
-
-This creates an `agentskills.yaml` file, auto-attaches the bundled `community` source, and starts an interactive starter picker.
-
----
-
-## Step 3 — Explore and install community skills
-
-Browse available skills from bundled community source:
-
-```bash
-# See what's available
-agent-wizard list --source-name community
-
-# Add individual skills from that source
-agent-wizard add pr-review --source community
-agent-wizard add plan-review --source community
-
-# Or add a whole pack (a bundle of related skills)
-agent-wizard pack add android-starter
-```
-
-Sync the skills into your project:
-
-```bash
-agent-wizard sync
-```
-
-That's it. The skills are now in `.agents/skills/` and your AI agent can use them immediately.
-
----
-
-## Step 4 — Create and share your own skills (private to your team)
-
-### Create a skill
-
-A skill is just a folder with a `SKILL.md` file:
-
-```
-my-team-skills/
-  deploy-checklist/
-    SKILL.md
-  code-review-guidelines/
-    SKILL.md
-  security-audit/
-    SKILL.md
-```
-
-Push this to a **private** Git repo that your team has access to.
-
-### Share with your team
-
-Every team member runs these two commands once:
-
-```bash
-# Register your team's private skill library (shareable)
-agent-wizard sources add --name my-team --kind git \
-  --git-url https://github.com/your-org/my-team-skills.git
-
-# See all team skills
-agent-wizard list --source-name my-team
-```
-
-Then in any project:
-
-```bash
-agent-wizard add deploy-checklist --source my-team
-# shorthand:
-# agent-wizard add deploy-checklist -my-team
-agent-wizard sync
-```
-
-Your skills stay in your private repo. No one outside your org can see them. Every teammate with repo access can install them in one command.
-
-### Packs — bundle multiple skills together
-
-Create a file called `.agent-wizard-pack.yaml` in your library:
+**Packs:** add `.agent-wizard-pack.yaml` at the library root:
 
 ```yaml
 name: onboarding-kit
@@ -207,16 +129,11 @@ skills:
   - security-audit
 ```
 
-Now any teammate can install the whole bundle:
-
-```bash
-agent-wizard pack add onboarding-kit
-agent-wizard sync
-```
+Install the bundle in a project: `agent-wizard pack add onboarding-kit` (then `agent-wizard sync` if you passed `--no-sync` on prior adds).
 
 ---
 
-## Step 5 — Lock versions and keep your team in sync
+## Lock versions and keep your team in sync
 
 Pin the exact versions everyone should use:
 
