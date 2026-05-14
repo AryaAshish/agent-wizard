@@ -1,34 +1,41 @@
 # agent-wizard
 
-Manage AI agent skills across all your projects. Install community skills, create your own, share them privately with your team — all from one CLI.
+**What:** CLI that installs reusable **agent skills** (folders with `SKILL.md`) into your repo—like package management for agent playbooks.
 
-Works with **Cursor, Claude Code, Codex**, and any agent that reads skill files.
+**Who:** Developers using **Cursor, Claude Code, Codex**, or any workflow that reads skill files from disk.
 
----
+**Outcome:** Skills land under your chosen directory in **about a minute**, ready to commit.
 
-## 30-second quick start
+**Install:** `curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh` — or `npm i -g @aryaashish/agent-wizard` ([releases](https://github.com/AryaAshish/agent-wizard/releases)).
+
+**Why not only copy-paste:** The **next repo** repeats with the same three commands—no hunting Slack or Notion. Pin versions with `lock` / `sync --strict-lock` when your team needs one truth.
+
+### Why not just copy markdown?
+
+| Copy-paste | agent-wizard |
+|------------|----------------|
+| Playbooks drift across Slack / Notion | Playbooks live **next to your code**; `agentskills.yaml` records what this repo installs |
+| Re-copy every new service | **Second project:** same commands, same skill id |
+| Everyone on different revisions | **`lock`** — teammates sync the **same** pinned revision |
+| Rewire paths per agent | **`targetDir` / profiles** — one manifest, multiple agent layouts |
+
+## Happy path (first run)
+
+Non-interactive terminals skip the `init` picker automatically—run `add` + `sync` right after `init`.
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/AryaAshish/agent-wizard/main/install.sh | sh
+hash -r 2>/dev/null || true
+agent-wizard --version
+mkdir -p /tmp/my-agent-demo && cd /tmp/my-agent-demo && git init -q
 agent-wizard init
-agent-wizard list --source-name community
-```
-
-`init` now auto-wires the bundled starter community library and opens an interactive picker.
-If you skip the picker, install one skill manually:
-
-```bash
+agent-wizard list --source-name community --filter pr
 agent-wizard add pr-review --source community
 agent-wizard sync
+test -f .agents/skills/pr-review/SKILL.md && echo "Skill on disk — open it in your editor."
 ```
 
-After `init`, the CLI also prints suggested commands:
-
-```bash
-agent-wizard list --source-name community
-agent-wizard add pr-review --source community
-agent-wizard pack add android-starter
-agent-wizard sync
-```
+Interactive `init` can open the starter picker; you can still run the `list` / `add` / `sync` lines afterward. **[Bundled skill index →](docs/SKILLS.md)**
 
 ---
 
@@ -296,7 +303,7 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 | `add SKILL -NAME` | Shorthand source selector (for example `-android`) |
 | `remove SKILL` | Remove a skill |
 | `pack add PACK` | Add a skill bundle |
-| `list --source-name NAME` | Browse skills in a source |
+| `list --source-name NAME [--filter SUB]` | Browse skills in a source (optional id filter) |
 | `list --installed` | See what's installed |
 | `sync` | Copy skills into your project |
 | `sync --dry-run` | Preview without writing |
@@ -322,6 +329,10 @@ Optional for local sources: add `--quiet` to suppress the collaboration warning 
 
 ## Documentation
 
+- [Bundled skills index](docs/SKILLS.md)
+- [Roadmap](ROADMAP.md)
+- [Launch metrics log](docs/metrics.md)
+- [Show HN draft](docs/show-hn.md)
 - [Manifest schema](docs/spec/manifest-schema.md)
 - [Lockfile schema](docs/spec/lockfile-schema.md)
 - [CLI contract](docs/cli-contract.md)
