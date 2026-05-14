@@ -19,6 +19,7 @@ import (
 	"github.com/aryaashish/agent-wizard/internal/engine"
 	"github.com/aryaashish/agent-wizard/internal/manifest"
 	"github.com/aryaashish/agent-wizard/internal/migrate"
+	"github.com/aryaashish/agent-wizard/internal/model"
 	"github.com/aryaashish/agent-wizard/internal/skills"
 )
 
@@ -28,11 +29,13 @@ func runListExpanded(args []string, stdout io.Writer) error {
 
 	var sourcePath string
 	var sourceName string
+	var filterNeedle string
 	var installed bool
 
 	fs.StringVar(&sourcePath, "source", ".", "source directory to scan")
 	fs.StringVar(&sourcePath, "S", ".", "source directory to scan (shorthand)")
 	fs.StringVar(&sourceName, "source-name", "", "configured source name")
+	fs.StringVar(&filterNeedle, "filter", "", "when listing skill ids: include only ids containing substring (case-insensitive)")
 	fs.BoolVar(&installed, "installed", false, "list resolved skills from current manifest")
 
 	if err := fs.Parse(args); err != nil {
@@ -63,6 +66,15 @@ func runListExpanded(args []string, stdout io.Writer) error {
 		refs, err := engine.ExpandSkillSelections(m, cfg, libRoot)
 		if err != nil {
 			return err
+		}
+		if strings.TrimSpace(filterNeedle) != "" {
+			var filtered []model.SkillRef
+			for _, r := range refs {
+				if skills.IDContainsFold(r.ID, filterNeedle) {
+					filtered = append(filtered, r)
+				}
+			}
+			refs = filtered
 		}
 		for _, r := range refs {
 			if r.SourceAlias == "" {
@@ -103,6 +115,7 @@ func runListExpanded(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	found = skills.FilterSkillsByIDSubstring(found, filterNeedle)
 	for _, s := range found {
 		fmt.Fprintln(stdout, s.ID)
 	}
