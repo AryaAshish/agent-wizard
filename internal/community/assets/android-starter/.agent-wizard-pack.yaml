@@ -4,3 +4,5 @@ skills:
   - pr-review
   - plan-review
   - launch-ready
+  - cursor-rules-hooks
+  - github-actions-matrix
